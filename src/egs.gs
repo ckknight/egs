@@ -4,15 +4,24 @@ require! path
 require! './helpers'
 require! './utils'
 
-let cache(should-cache, obj, key, func, callback)
-  if should-cache
-    if obj ownskey key
-      callback null, obj[key]
+let PARTIAL_PREFIX = "_"
+
+macro cache!(should-cache, obj, key, func, callback)
+  async set-func, func <- @maybe-cache func
+  async set-callback, callback <- @maybe-cache callback
+  async set-obj, obj <- @maybe-cache obj
+  async set-key, key <- @maybe-cache key
+  AST
+    $set-func
+    $set-callback
+    if $should-cache
+      if $set-obj ownskey $set-key
+        $callback null, $obj[$key]
+      else
+        async! callback, result <- $func()
+        $callback null, ($obj[$key] := result)
     else
-      async! callback, result <- func()
-      callback null, (obj[key] := result)
-  else
-    func callback
+      $func($callback)
 
 let get-prelude-macros(callback as ->)!
   async! callback, text <- fs.read-file "$__dirname/../src/egs-prelude.gs", "utf8"
@@ -27,11 +36,11 @@ let compile(text as String, options as {}, callback as ->)!
 
 let file-cache = {}
 let read-file(path, should-cache, callback)
-  cache should-cache, file-cache, path, (#(cb) -> fs.read-file path, 'utf8', cb), callback
+  cache! should-cache, file-cache, path, (#(cb) -> fs.read-file path, 'utf8', cb), callback
 
 let find-file-cache = {}
 let find-file(name, from-filename, should-cache, callback)
-  cache should-cache, find-file-cache, name, (#(cb)
+  cache! should-cache, find-file-cache, "$name\0$from-filename", (#(cb)
     let mutable filename = name
     if not path.extname(filename)
       let match = r'(\..*$)'.exec(path.basename(from-filename))
@@ -39,10 +48,11 @@ let find-file(name, from-filename, should-cache, callback)
         filename &= match[1]
     cb null, path.join path.dirname(from-filename), filename), callback
 
-let find-and-get-compiled(name, options, callback)
-  async! callback, filename <- find-file(name, options.filename, options.cache)
+let find-and-get-compiled(name, from-filename, options, callback)
+  async! callback, filename <- find-file(name, from-filename, options.cache)
   async! callback, text <- read-file filename, options.cache
-  get-compiled text, filename, options, callback
+  async! callback, compiled <- get-compiled text, filename, options
+  callback null, filename, compiled
 
 class TextBuilder
   def constructor(@escape as ->)
@@ -86,11 +96,12 @@ let make-uid()
   "$(Math.random().to-string(16).slice(2))-$(new Date().get-time())"
 
 let do-nothing() ->
-let get-standard-helpers(options, context, callback)
+let get-standard-helpers(options, context, mutable callback)
   let blocks = {}
   let block-writers = {}
   let block-writers-depth = {}
   let mutable pending = 1
+  let mutable errored = false
   let pend()!
     pending += 1
   let handle-writers()
@@ -104,14 +115,23 @@ let get-standard-helpers(options, context, callback)
       if best-name?
         let block = blocks[best-name]
         blocks[best-name] := null
-        block block-writers[best-name]
+        try
+          block block-writers[best-name]
+        catch e
+          errored := true
+          return callback e
       else
         break
+    false
   let fulfill()!
+    if errored
+      return
     pending -= 1
     if pending == 0
       pending += 1
       handle-writers()
+      if errored
+        return
       pending -= 1
       if pending == 0
         callback()
@@ -122,13 +142,22 @@ let get-standard-helpers(options, context, callback)
     [name-key]: options.filename
     pend
     fulfill
-    partial: #(name as String, mutable write as ->, locals = {})!
+    partial: #(mutable name as String, mutable write as ->, locals = {})!
       if not options.filename
         return callback Error "Can only use partial if the 'filename' option is specified"
       write := write.clone()
+      let partial-prefix = if is-string! options.partial-prefix
+        options.partial-prefix
+      else
+        PARTIAL_PREFIX
+      name := partial-prefix ~& name
       pend()
-      async! throw, func <- find-and-get-compiled name, options
-      func write, {extends context} <<< locals <<< {[name-key]: name}
+      async! throw, filename, func <- find-and-get-compiled name, @[name-key], options
+      try
+        func write, {extends context} <<< locals <<< {[name-key]: filename}
+      catch e
+        errored := true
+        return callback e
       fulfill()
     
     extends: #(name as String, mutable write as ->, locals = {})!
@@ -137,8 +166,12 @@ let get-standard-helpers(options, context, callback)
       write.disable()
       write := write.clone()
       pend()
-      async! throw, func <- find-and-get-compiled name, options
-      func write, {extends context} <<< locals <<< {[depth-key]: @[depth-key] + 1, [name-key]: name}
+      async! throw, filename, func <- find-and-get-compiled name, @[name-key], options
+      try
+        func write, {extends context} <<< locals <<< {[depth-key]: @[depth-key] + 1, [name-key]: filename}
+      catch e
+        errored := true
+        return callback e
       fulfill()
     
     block: #(name as String, mutable write as ->, inside as ->|null)!
@@ -155,7 +188,7 @@ let get-compiled(text as String, key, options, callback)!
   if options.cache and not key
     return callback Error "If 'cache' is enabled, the 'filename' option must be specified"
   
-  cache options.cache, compile-cache, key, (#(cb) -> compile text, options, cb), callback
+  cache! options.cache, compile-cache, key, (#(cb) -> compile text, options, cb), callback
 
 let make-context(options as {}, data as {}, callback as ->)
   let context = {extends GLOBAL}
@@ -180,9 +213,15 @@ let build(mutable text as String, options = {}, callback as ->|null)
       throw TypeError "Expected callback to be a Function, got $(typeof! callback)"
     async! callback, func <- fetch()
     let builder = TextBuilder(if is-function! options.escape then options.escape else utils.escape-HTML)
-    let context = make-context options, data, __once #
-      callback null, builder.build()
-    func builder.write, context
+    let context = make-context options, data, __once #(e)
+      if e?
+        callback e
+      else
+        callback null, builder.build()
+    try
+      func builder.write, context
+    catch e
+      return callback(e)
     context.fulfill()
   if callback?
     async! callback <- fetch()
@@ -190,6 +229,16 @@ let build(mutable text as String, options = {}, callback as ->|null)
   else
     render
 
+let build-file-cache = {}
+let make-cache-key(options)
+  let parts = []
+  for key in [\filename, \embedded-open, \embedded-open-write, \embedded-open-comment, \embedded-close, \embedded-close-write, \embedded-close-comment]
+    parts.push options[key] or ""
+  if is-string! options.partial-prefix
+    parts.push options.partial-prefix
+  else
+    parts.push PARTIAL_PREFIX
+  parts.join "\0"
 let build-file(path as String, options = {}, callback)!
   if is-function! options and not callback?
     return build-file path, {}, options
@@ -197,8 +246,10 @@ let build-file(path as String, options = {}, callback)!
     throw TypeError "Expected callback to be a Function, got $(typeof! callback)"
   
   options.filename := path
-  async! callback, text <- read-file path, options.cache
-  build text, options, callback
+  let get-builder(cb)
+    async! cb, text <- read-file path, options.cache
+    build text, options, cb
+  cache! options.cache, build-file-cache, make-cache-key(options), get-builder, callback
 
 let render(text as String, options = {}, callback)!
   if is-function! options and not callback?

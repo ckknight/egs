@@ -1,0 +1,5 @@
+<% extends \layout %>
+
+<% block body: %>
+[<% block sub-body %>]
+<% end %>

@@ -1,0 +1,22 @@
+{
+  "name": "egs",
+  "description": "Embedded GorillaScript template generator",
+  "version": "0.0.1",
+  "author": {
+    "name": "Cameron Kenneth Knight",
+    "email": "ckknight@gmail.com"
+  },
+  "keywords": ["compile", "language", "gorilla", "embedded", "html", "express"],
+  "homepage": "http://ckknight.github.com/egs/",
+  "bugs": "https://github.com/ckknight/egs/issues",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/ckknight/egs"
+  },
+  "dependencies": {
+    "gorillascript": ">=0.5.2"
+  },
+  "main": "index",
+  "readmeFilename": "README"
+}

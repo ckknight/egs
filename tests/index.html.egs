@@ -1,0 +1,9 @@
+<% extends \layout %>
+
+<% block footer: %>
+Footer override
+<% end %>
+
+<% block body: %>
+Body override
+<% end %>

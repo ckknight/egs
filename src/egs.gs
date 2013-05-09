@@ -161,31 +161,34 @@ let make-context(options as {}, data as {}, callback as ->)
   let context = {extends GLOBAL}
   context <<< get-standard-helpers(options, context, callback) <<< (options.context or {}) <<< data
 
-let build(text as String, options = {}, callback as ->|null)
+let build(mutable text as String, options = {}, callback as ->|null)
   if is-function! options and not callback?
     return build text, {}, callback
   let mutable compiled-func = void
-  get-compiled text, options, #(err, func)@
-    if err?
-      if callback?
-        return callback err
-      else
-        throw err
-    compiled-func := func
-    callback?(null, render)
+  let fetch(callback)
+    if compiled-func?
+      callback null, compiled-func
+    else
+      async! callback, func <- get-compiled text, options
+      text := null // allow memory to be cleared
+      compiled-func := func
+      callback null, compiled-func
   let render(data = {}, callback)
     if is-function! data and not callback?
       return render {}, data
     if not is-function! callback
       throw TypeError "Expected callback to be a Function, got $(typeof! callback)"
-    if not compiled-func?
-      return set-timeout #-> render(data, callback), 17
+    async! callback, func <- fetch()
     let builder = TextBuilder(if is-function! options.escape then options.escape else utils.escape-HTML)
     let context = make-context options, data, __once #
       callback null, builder.build()
-    compiled-func builder.write, context
+    func builder.write, context
     context.fulfill()
-  render
+  if callback?
+    async! callback <- fetch()
+    callback null, render
+  else
+    render
 
 let build-file(path as String, options = {}, callback)!
   if is-function! options and not callback?

@@ -42,7 +42,7 @@ let find-file(name, from-filename, should-cache, callback)
 let find-and-get-compiled(name, options, callback)
   async! callback, filename <- find-file(name, options.filename, options.cache)
   async! callback, text <- read-file filename, options.cache
-  get-compiled text, options, callback
+  get-compiled text, filename, options, callback
 
 class TextBuilder
   def constructor(@escape as ->)
@@ -151,11 +151,11 @@ let get-standard-helpers(options, context, callback)
   }
 
 let compile-cache = {}
-let get-compiled(text as String, options, callback)!
-  if options.cache and not options.filename
+let get-compiled(text as String, key, options, callback)!
+  if options.cache and not key
     return callback Error "If 'cache' is enabled, the 'filename' option must be specified"
   
-  cache options.cache, compile-cache, options.filename, (#(cb) -> compile text, options, cb), callback
+  cache options.cache, compile-cache, key, (#(cb) -> compile text, options, cb), callback
 
 let make-context(options as {}, data as {}, callback as ->)
   let context = {extends GLOBAL}
@@ -169,7 +169,7 @@ let build(mutable text as String, options = {}, callback as ->|null)
     if compiled-func?
       callback null, compiled-func
     else
-      async! callback, func <- get-compiled text, options
+      async! callback, func <- get-compiled text, options.filename, options
       text := null // allow memory to be cleared
       compiled-func := func
       callback null, compiled-func

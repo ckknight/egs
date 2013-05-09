@@ -12,3 +12,8 @@ test "Multiple levels of extends", #(cb)
   async! throw, result <- egs.render-file "$__dirname/multiextend.html.egs", {}
   eq "Outer layout [Sub-body override] Default footer Done", result
   cb()
+
+test "Multiple levels of extends with caching", #(cb)
+  async! throw, result <- egs.render-file "$__dirname/multiextend.html.egs", {cache: true}
+  eq "Outer layout [Sub-body override] Default footer Done", result
+  cb()

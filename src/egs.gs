@@ -4,232 +4,161 @@ require! path
 require! './helpers'
 require! './utils'
 
-let PARTIAL_PREFIX = "_"
+const PARTIAL_PREFIX = "_"
 
-macro cache!(should-cache, obj, key, func, callback)
-  async set-func, func <- @maybe-cache func
-  async set-callback, callback <- @maybe-cache callback
-  async set-obj, obj <- @maybe-cache obj
-  async set-key, key <- @maybe-cache key
-  AST
-    $set-func
-    $set-callback
-    if $should-cache
-      if $set-obj ownskey $set-key
-        $callback null, $obj[$key]
-      else
-        async! callback, result <- $func()
-        $callback null, ($obj[$key] := result)
-    else
-      $func($callback)
+macro cache!(should-cache, cache, key, call)
+  @maybe-cache cache, #(set-cache, cache)@
+    @maybe-cache key, #(set-key, key)@
+      AST
+        if $should-cache
+          if $set-cache ownskey $set-key
+            $cache[$key]
+          else
+            $cache[$key] := $call
+        else
+          $call
 
-let get-prelude-macros(callback as ->)!
-  async! callback, text <- fs.read-file "$__dirname/../src/egs-prelude.gs", "utf8"
-  async! callback, result <- gorillascript.parse text
-  callback null, result.macros
+let read-file = do
+  let read(path) -> to-promise! fs.read-file path, 'utf8'
+  let file-cache = {}
+  #(path, should-cache)
+    cache! should-cache, file-cache, path, read path
 
-let compile(text as String, options as {}, callback as ->)!
-  async! callback, macros <- get-prelude-macros()
-  async! callback, result <- gorillascript.compile text, {} <<< options <<< {+embedded, +noindent, macros}
-  let func = Function("return " & result.code)()
-  callback null, func
-
-let file-cache = {}
-let read-file(path, should-cache, callback)
-  cache! should-cache, file-cache, path, (#(cb) -> fs.read-file path, 'utf8', cb), callback
-
-let find-file-cache = {}
-let find-file(name, from-filename, should-cache, callback)
-  cache! should-cache, find-file-cache, "$name\0$from-filename", (#(cb)
-    let mutable filename = name
-    if not path.extname(filename)
-      let match = r'(\..*$)'.exec(path.basename(from-filename))
+let find-file = do
+  let find = promise! #(mutable name, from-filename)*
+    if not path.extname(name)
+      let match = r'(\.[^/\\]*$)'.exec(path.basename(from-filename))
       if match
-        filename &= match[1]
-    cb null, path.join path.dirname(from-filename), filename), callback
+        name &= match[1]
+    return path.join(path.dirname(from-filename), name)
+  
+  let find-file-cache = {}
+  #(name, from-filename, should-cache)
+    cache! should-cache, find-file-cache, "$name\0$from-filename", find name, from-filename
 
-let find-and-get-compiled(name, from-filename, options, callback)
-  async! callback, filename <- find-file(name, from-filename, options.cache)
-  async! callback, text <- read-file filename, options.cache
-  async! callback, compiled <- get-compiled text, filename, options
-  callback null, filename, compiled
+let get-prelude-macros = do
+  let mutable cache = void
+  #
+    return? cache
+    cache := promise!
+      let text = yield to-promise! fs.read-file "$__dirname/../src/egs-prelude.gs", "utf8"
+      let result = yield to-promise! gorillascript.parse text
+      return result.macros
 
-class TextBuilder
-  def constructor(@escape as ->)
-    @head := { text: "", next: null }
-    @write := @get-writer()
-  
-  let to-array(node)
-    let mutable current = node
-    let sb = []
-    while current?
-      sb.push current.text
-      current := current.next
-    sb
-  
-  def inspect(depth)
-    let array = for filter part in to-array(@head); part
-    "TextBuilder(" & require('util').inspect(array, null, depth) & ")"
-  
-  def build()
-    to-array(@head).join ""
-  
-  def get-writer(node)
-    let mutable current = node or @head
-    let mutable disabled = false
-    let write(data, should-escape)!@
-      if disabled
-        return
-      let text = if should-escape
-        @escape data
+let compile = promise! #(text as String, options as {})*
+  let macros = yield get-prelude-macros()
+  let result = yield to-promise! gorillascript.compile text, {} <<< options <<< {+embedded, +embedded-generator, +noindent, macros}
+  return Function("return " & result.code)()
+
+let get-compiled = do
+  let compile-cache = {}
+  #(text as String, key, options = {})
+    if options.cache and not key
+      throw Error "If 'cache' is enabled, the 'filename' option must be specified"
+    
+    cache! options.cache, compile-cache, key, compile text, options
+
+let find-and-get-compiled = promise! #(name, from-filename, options = {})*
+  let filename = yield find-file name, from-filename, options.cache
+  let text = yield read-file filename, options.cache
+  let compiled = yield get-compiled text, filename, options
+  return { filename, compiled }
+
+let make-text-writer(escape)
+  let mutable data as Array|null = []
+  let write(value, should-escape)
+    if data
+      data.push String if should-escape
+        escape value
       else
-        String data
-      current := current.next := { text, current.next }
-    write.clone := #@
-      let result = @get-writer(current)
-      current := current.next := { text: "", current.next }
-      result
-    write.disable := #! -> disabled := true
-    write
+        value
+  write.disable := #!-> data := null
+  write.is-disabled := #-> data == null
+  write.build := #-> data.join ""
+  write
 
 let make-uid()
   "$(Math.random().to-string(16).slice(2))-$(new Date().get-time())"
 
-let do-nothing() ->
-let get-standard-helpers(options, context, mutable callback)
-  let blocks = {}
-  let block-writers = {}
-  let block-writers-depth = {}
-  let mutable pending = 1
-  let mutable errored = false
-  let pend()!
-    pending += 1
-  let handle-writers()
-    while pending == 1
-      let mutable max-depth = -1
-      let mutable best-name = void
-      for name, depth of block-writers-depth
-        if depth > max-depth and blocks![name]
-          max-depth := depth
-          best-name := name
-      if best-name?
-        let block = blocks[best-name]
-        blocks[best-name] := null
-        try
-          block block-writers[best-name]
-        catch e
-          errored := true
-          return callback e
-      else
-        break
-    false
-  let fulfill()!
-    if errored
-      return
-    pending -= 1
-    if pending == 0
-      pending += 1
-      handle-writers()
-      if errored
-        return
-      pending -= 1
-      if pending == 0
-        callback()
+let handle-extends-key = make-uid()
+let write-key = make-uid()
+let make-standard-helpers(options)
   let name-key = make-uid()
-  let depth-key = make-uid()
+  let extended-by-key = make-uid()
+  let extended-by-locals-key = make-uid()
+  let in-partial-key = make-uid()
+  let blocks = {}
+  let escape = if is-function! options.escape then options.escape else utils.escape-HTML
+  let write = make-text-writer escape
   {} <<< helpers <<< {
-    [depth-key]: 0
     [name-key]: options.filename
-    pend
-    fulfill
-    partial: #(mutable name as String, mutable write as ->, locals = {})!
+    [extended-by-key]: null
+    [extended-by-locals-key]: null
+    [in-partial-key]: false
+    [write-key]: write
+    extends(name as String, locals = {})!
       if not options.filename
-        return callback Error "Can only use partial if the 'filename' option is specified"
-      write := write.clone()
+        throw Error "Can only use extends if the 'filename' option is specified"
+      if @[in-partial-key]
+        throw Error "Cannot use extends when in a partial"
+      if @[extended-by-key]
+        throw Error "Cannot use extends more than once"
+      @[write-key].disable()
+      @[extended-by-key] := find-and-get-compiled name, @[name-key], options
+      @[extended-by-locals-key] := locals
+    partial: promise! #(mutable name as String, write as ->, locals = {})*
+      if not options.filename
+        throw Error "Can only use partial if the 'filename' option is specified"
       let partial-prefix = if is-string! options.partial-prefix
         options.partial-prefix
       else
         PARTIAL_PREFIX
-      name := partial-prefix ~& name
-      pend()
-      async! throw, filename, func <- find-and-get-compiled name, @[name-key], options
-      try
-        func write, {extends context} <<< locals <<< {[name-key]: filename}
-      catch e
-        errored := true
-        return callback e
-      fulfill()
-    
-    extends: #(name as String, mutable write as ->, locals = {})!
-      if not options.filename
-        return callback Error "Can only use extends if the 'filename' option is specified"
-      write.disable()
-      write := write.clone()
-      pend()
-      async! throw, filename, func <- find-and-get-compiled name, @[name-key], options
-      try
-        func write, {extends context} <<< locals <<< {[depth-key]: @[depth-key] + 1, [name-key]: filename}
-      catch e
-        errored := true
-        return callback e
-      fulfill()
-    
-    block: #(name as String, mutable write as ->, inside as ->|null)!
-      if inside? and blocks not ownskey name
-        blocks[name] := inside
+      name := path.join(path.dirname(name), partial-prefix ~& path.basename(name))
+      let {filename, compiled} = yield find-and-get-compiled name, @[name-key], options
+      yield promise! compiled write, {extends this} <<< locals <<< {[name-key]: filename, [in-partial-key]: true}
+    block: promise! #(mutable name as String, write as ->, inside as ->|null)*
+      if @[in-partial-key]
+        throw Error "Cannot use block when in a partial"
       
-      if block-writers not ownskey name or @[depth-key] > block-writers-depth[name]
-        block-writers[name] := write.clone()
-        block-writers-depth[name] := @[depth-key]
+      if write.is-disabled()
+        if inside? and blocks not ownskey name
+          blocks[name] := inside
+      else
+        let block = blocks![name] or inside
+        if block
+          yield promise! block write
+    [handle-extends-key]: promise! #(locals = {})*
+      let extended-by = @[extended-by-key]
+      if not extended-by
+        return @[write-key].build()
+      
+      let write = make-text-writer escape
+      
+      let {filename, compiled} = yield extended-by
+      let new-context = {extends this} <<< @[extended-by-locals-key] <<< {
+        [name-key]: filename
+        [extended-by-key]: null
+        [extended-by-locals-key]: null
+        [write-key]: write
+      }
+      yield promise! compiled write, new-context
+      return yield new-context[handle-extends-key]()
   }
 
-let compile-cache = {}
-let get-compiled(text as String, key, options, callback)!
-  if options.cache and not key
-    return callback Error "If 'cache' is enabled, the 'filename' option must be specified"
+let make-context(options as {}, data as {})
+  {extends GLOBAL} <<< make-standard-helpers(options) <<< (options.context or options) <<< data
+
+let build(mutable text as String, options = {})
+  let func-p = promise!
+    return yield get-compiled text, options.filename, options
   
-  cache! options.cache, compile-cache, key, (#(cb) -> compile text, options, cb), callback
+  promise! #(data = {})*
+    let func = yield func-p
+    let context = make-context(options, data)
+    yield promise! func context[write-key], context
+    let text = yield context[handle-extends-key]()
+    return text
 
-let make-context(options as {}, data as {}, callback as ->)
-  let context = {extends GLOBAL}
-  context <<< get-standard-helpers(options, context, callback) <<< (options.context or {}) <<< data
-
-let build(mutable text as String, options = {}, callback as ->|null)
-  if is-function! options and not callback?
-    return build text, {}, callback
-  let mutable compiled-func = void
-  let fetch(callback)
-    if compiled-func?
-      callback null, compiled-func
-    else
-      async! callback, func <- get-compiled text, options.filename, options
-      text := null // allow memory to be cleared
-      compiled-func := func
-      callback null, compiled-func
-  let render(data = {}, callback)
-    if is-function! data and not callback?
-      return render {}, data
-    if not is-function! callback
-      throw TypeError "Expected callback to be a Function, got $(typeof! callback)"
-    async! callback, func <- fetch()
-    let builder = TextBuilder(if is-function! options.escape then options.escape else utils.escape-HTML)
-    let context = make-context options, data, __once #(e)
-      if e?
-        callback e
-      else
-        callback null, builder.build()
-    try
-      func builder.write, context
-    catch e
-      return callback(e)
-    context.fulfill()
-  if callback?
-    async! callback <- fetch()
-    callback null, render
-  else
-    render
-
-let build-file-cache = {}
 let make-cache-key(options)
   let parts = []
   for key in [\filename, \embedded-open, \embedded-open-write, \embedded-open-comment, \embedded-close, \embedded-close-write, \embedded-close-comment]
@@ -239,38 +168,33 @@ let make-cache-key(options)
   else
     parts.push PARTIAL_PREFIX
   parts.join "\0"
-let build-file(path as String, options = {}, callback)!
-  if is-function! options and not callback?
-    return build-file path, {}, options
-  if not is-function! callback
-    throw TypeError "Expected callback to be a Function, got $(typeof! callback)"
-  
-  options.filename := path
-  let get-builder(cb)
-    async! cb, text <- read-file path, options.cache
-    build text, options, cb
-  cache! options.cache, build-file-cache, make-cache-key(options), get-builder, callback
+let build-from-file = do
+  let get-builder(path, options)
+    let build-p = promise!
+      let text = yield read-file path, options.cache
+      return build text, options
+    
+    promise! #(data = {})*
+      let builder = yield build-p
+      return yield builder(data)
+  let build-from-file-cache = {}
+  #(path as String, options = {})
+    options.filename := path
+    cache! options.cache, build-from-file-cache, make-cache-key(options), get-builder(path, options)
 
-let render(text as String, options = {}, callback)!
-  if is-function! options and not callback?
-    return render text, {}, options
-  if not is-function! callback
-    throw TypeError "Expected callback to be a Function, got $(typeof! callback)"
-  async! callback, run <- build(text, options)
-  run(if options.context then {} else options, callback)
+let render = promise! #(text as String, options = {}, data)*
+  let template = build text, options
+  return yield template(data)
 
-let render-file(path as String, options = {}, callback)!
-  if is-function! options and not callback?
-    return render-file path, {}, options
-  if not is-function! callback
-    throw TypeError "Expected callback to be a Function, got $(typeof! callback)"
-  
-  async! callback, run <- build-file(path, options)
-  run(if options.context then {} else options, callback)
+let render-file = promise! #(path as String, options = {}, data)*
+  let template = build-from-file path, options
+  return yield template(data)
 
 module.exports := build <<< {
-  build-file
+  from-file: build-from-file
   render
   render-file
-  __express: render-file
+  __express(path as String, options = {}, callback as ->)!
+    let fun = from-promise! render-file(path, options)
+    fun callback
 }

@@ -1,16 +1,14 @@
-macro extends
-  syntax name
-    ASTE context.extends $name, write
+macro extends(name, locals)
+  ASTE context.extends $name, $locals
 
 macro block
-  syntax ident as Identifier, body as Body?
+  syntax ident as Identifier, body as GeneratorBody?
     let name = @const @name(ident)
     if body?
-      ASTE context.block $name, write, #(write)!
+      ASTE yield context.block $name, write, #(write)*
         $body
     else
-      ASTE context.block $name, write
+      ASTE yield context.block $name, write
 
-macro partial
-  syntax name, locals as (",", this as ObjectLiteral)?
-    ASTE context.partial $name, write, $locals
+macro partial(name, locals)
+  ASTE yield context.partial $name, write, $locals

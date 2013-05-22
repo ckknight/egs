@@ -1,5 +1,0 @@
-<% extends \sublayout %>
-
-<% block sub-body: %>
-Sub-body override
-<% end %>

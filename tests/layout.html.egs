@@ -1,9 +1,0 @@
-Outer layout
-
-<% block body %>
-
-<% block footer: %>
-Default footer
-<% end %>
-
-Done

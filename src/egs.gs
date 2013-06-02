@@ -50,19 +50,29 @@ let guess-filepath = do
  * used in further compilation.
  */
 let get-prelude-macros = do
-  let mutable cache = void
-  # cache ?= promise!
-    let text = yield to-promise! fs.read-file "$__dirname/../src/egs-prelude.gs", "utf8"
-    let result = yield gorillascript.parse text
-    result.macros
+  let mutable egs-prelude-p = void
+  let prelude-path-cache = {}
+  #(prelude-path as String|null)
+    egs-prelude-p ?= promise!
+      let text = yield to-promise! fs.read-file "$__dirname/../src/egs-prelude.gs", "utf8"
+      let result = yield gorillascript.parse text
+      result.macros
+    if not prelude-path
+      egs-prelude-p
+    else
+      prelude-path-cache[prelude-path] ownsor= promise!
+        let egs-prelude = yield egs-prelude-p
+        let text = yield to-promise! fs.read-file prelude-path, "utf8"
+        let result = yield gorillascript.parse text, { macros: egs-prelude }
+        result.macros
 
 /**
  * Compile a chunk of egs-code to a usable function which takes a write
  * function and the context which it uses to override global access.
  */
 let compile = promise! #(egs-code as String, compile-options as {})* as Promise<Function<Promise, Function, {}>>
-  let macros = yield get-prelude-macros()
-  let result = yield gorillascript.compile egs-code, {} <<< compile-options <<< {+embedded, +embedded-generator, +noindent, macros}
+  let macros = yield get-prelude-macros(compile-options.prelude)
+  let result = yield gorillascript.compile egs-code, {} <<< compile-options <<< {+embedded, +embedded-generator, +noindent, macros, prelude: null}
   promise! Function("return " & result.code)()
 
 /**
@@ -71,7 +81,7 @@ let compile = promise! #(egs-code as String, compile-options as {})* as Promise<
  */
 let make-cache-key(options) as String
   let parts = []
-  for key in [\embedded-open, \embedded-open-write, \embedded-open-comment, \embedded-close, \embedded-close-write, \embedded-close-comment, \cache]
+  for key in [\embedded-open, \embedded-open-write, \embedded-open-comment, \embedded-close, \embedded-close-write, \embedded-close-comment, \cache, \prelude]
     parts.push options[key] or "\0"
   parts.join "\0"
 
@@ -254,6 +264,7 @@ let sift-options(options) {
   options.cache
   options.escape
   options.partial-prefix
+  options.prelude
   // include an empty context to be clear that the options does not inherit anything directly.
   context: {}
 }

@@ -36,7 +36,7 @@ module.exports := #(grunt)
         options:
           timeout: 2_000_ms
           require: "test/setup"
-        src: ["test/**/*.gs"]
+        src: ["test/*.gs"]
       
       "test-cov":
         options:
@@ -44,7 +44,7 @@ module.exports := #(grunt)
           timeout: 2_000_ms
           require: "test/setup"
           quiet: true
-        src: ["test/**/*.gs"]
+        src: ["test/*.gs"]
         dest: "coverage.html"
   
   grunt.load-npm-tasks "grunt-gorilla"

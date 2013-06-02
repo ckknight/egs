@@ -12,9 +12,13 @@ exports.escape-HTML := do
   }
   let replacer(x) -> escapes[x]
   let regex = r"[&<>""']"g
-  let escape(text) -> text.replace(regex, replacer)
-  #(text)
-    if text? and is-function! text.to-HTML
-      String text.to-HTML()
+  let escaper(text) -> text.replace(regex, replacer)
+  #(value)
+    if is-string! value
+      escaper value
+    else if is-number! value
+      value.to-string()
+    else if value? and is-function! value.to-HTML
+      String value.to-HTML()
     else
-      escape String text
+      throw TypeError "Expected a String, Number, or Object with a toHTML method, got $(typeof! value)"

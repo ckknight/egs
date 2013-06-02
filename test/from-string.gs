@@ -18,7 +18,9 @@ describe "from a string", #
       every-promise! [
         expect(template()).to.be.rejected.with TypeError
         expect(template(name: "friend")).to.eventually.equal "Hello, friend!"
+        expect(template(name: 1234)).to.eventually.equal "Hello, 1234!"
         expect(template(name: '"friend"')).to.eventually.equal "Hello, &quot;friend&quot;!"
+        expect(template(name: {})).to.be.rejected.with TypeError
       ]
     
     it "allows a template to be passed in a context that can be overridden", #
@@ -107,6 +109,22 @@ describe "from a string", #
         expect(template name: '"friend"')
           .to.eventually.equal 'Hello, "FRIEND"!'
       ]
+    
+    it "fails if attempting to use extends", #
+      let template = egs """
+      <% extends "blah" %>
+      """
+      
+      expect(template())
+        .to.be.rejected.with egs.EgsError
+    
+    it "fails if attempting to use partial", #
+      let template = egs """
+      <% partial "blah" %>
+      """
+      
+      expect(template())
+        .to.be.rejected.with egs.EgsError
   
   describe "can render immediately", #
     it "without making a template first", #

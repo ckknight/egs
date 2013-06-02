@@ -9,17 +9,14 @@ const PARTIAL_PREFIX = "_"
 const DEBUG = false
 const DISABLE_TYPE_CHECKING = not DEBUG
 
-macro cache!(should-cache, cache, key, call)
-  @maybe-cache cache, #(set-cache, cache)@
-    @maybe-cache key, #(set-key, key)@
-      AST
-        if $should-cache
-          if $set-cache ownskey $set-key
-            $cache[$key]
-          else
-            $cache[$key] := $call
-        else
-          $call
+class EgsError extends Error
+  def constructor(mutable @message as String = "")
+    let err = super(message)
+    if is-function! Error.capture-stack-trace
+      Error.capture-stack-trace this, EgsError
+    else if err haskey \stack
+      @stack := err.stack
+  def name = "EgsError"
 
 /**
  * Unlike path.extname, this returns the extension from the first dot onward.
@@ -28,7 +25,7 @@ macro cache!(should-cache, cache, key, call)
  * For example, "hello.html.egs" will return ".html.egs" rather than ".egs"
  */
 let full-extname(filename)
-  let match = r'^[^\.]+(.*)$'.exec(path.basename(filename))
+  let match = r'^[^\.]+(\..*)$'.exec(path.basename(filename))
   if match
     match[1]
   else
@@ -96,8 +93,7 @@ let compile-file = do
         let egs-code = yield to-promise! fs.read-file filepath, "utf8"
         yield compile egs-code, compile-options
       if compile-options.cache
-        let current-compilation-p = recompile-file()
-        current-compilation-p
+        recompile-file()
       else
         let retime = promise! #*
           let stat = yield to-promise! fs.stat filepath
@@ -150,6 +146,7 @@ let make-uid()
 
 let handle-extends-key = make-uid()
 let write-key = make-uid()
+let package-key = make-uid()
 /**
  * Create an object full of helpers used to enable extension, partials, and blocks.
  */
@@ -161,35 +158,43 @@ let make-standard-helpers(options)
   let blocks = {}
   let escaper = if is-function! options.escape then options.escape else utils.escape-HTML
   let write = make-text-writer escaper
+  let fetch-compiled =
+    if options[package-key]
+      #(context, name) -> options[package-key]._find name, context[filepath-key]
+    else
+      #(context, name) -> find-and-compile-file name, context[filepath-key], options
   {} <<< helpers <<< {
     [filepath-key]: options.filename
     [extended-by-key]: null
     [extended-by-locals-key]: null
     [in-partial-key]: false
     [write-key]: write
+    
     extends(name as String, locals = {})!
       if not options.filename
-        throw Error "Can only use extends if the 'filename' option is specified"
+        throw EgsError "Can only use extends if the 'filename' option is specified"
       if @[in-partial-key]
-        throw Error "Cannot use extends when in a partial"
+        throw EgsError "Cannot use extends when in a partial"
       if @[extended-by-key]
-        throw Error "Cannot use extends more than once"
+        throw EgsError "Cannot use extends more than once"
       @[write-key].disable()
-      @[extended-by-key] := find-and-compile-file name, @[filepath-key], options
+      @[extended-by-key] := fetch-compiled this, name
       @[extended-by-locals-key] := locals
+    
     partial: promise! #(mutable name as String, write as ->, locals = {})*
       if not options.filename
-        throw Error "Can only use partial if the 'filename' option is specified"
+        throw EgsError "Can only use partial if the 'filename' option is specified"
       let partial-prefix = if is-string! options.partial-prefix
         options.partial-prefix
       else
         PARTIAL_PREFIX
       name := path.join(path.dirname(name), partial-prefix ~& path.basename(name))
-      let {filepath, compiled} = yield find-and-compile-file name, @[filepath-key], options
+      let {filepath, compiled} = yield fetch-compiled this, name
       yield compiled write, {extends this} <<< locals <<< {[filepath-key]: filepath, [in-partial-key]: true}
+    
     block: promise! #(mutable name as String, write as ->, inside as ->|null)*
       if @[in-partial-key]
-        throw Error "Cannot use block when in a partial"
+        throw EgsError "Cannot use block when in a partial"
       
       if write.is-disabled()
         if inside? and blocks not ownskey name
@@ -198,6 +203,7 @@ let make-standard-helpers(options)
         let block = blocks![name] or inside
         if block
           yield promise! block write
+    
     [handle-extends-key]: promise! #(locals = {})*
       let extended-by = @[extended-by-key]
       if not extended-by
@@ -255,13 +261,13 @@ let sift-options(options) {
 /**
  * Create a template given the egs-code and options.
  */
-let build(mutable egs-code as String, mutable options = {}) as Function<Promise<String>>
+let compile-template(mutable egs-code as String, mutable options = {}) as Function<Promise<String>>
   make-template compile(egs-code, sift-options(options)), options
 
 /**
  * Create a template from a given filename and options.
  */
-let build-from-file(filepath as String, options = {}) as Function<Promise<String>, {}>
+let compile-template-from-file(filepath as String, options = {}) as Function<Promise<String>, {}>
   options.filename := filepath
   make-template compile-file(filepath, sift-options(options)), options
 
@@ -269,7 +275,7 @@ let build-from-file(filepath as String, options = {}) as Function<Promise<String
  * Render a chunk of egs-code given the options and optional context.
  */
 let render = promise! #(egs-code as String, options = {}, context)* as Promise<String>
-  let template = build egs-code, sift-options(options)
+  let template = compile-template egs-code, sift-options(options)
   yield template(context or options.context or options)
 
 /**
@@ -277,14 +283,85 @@ let render = promise! #(egs-code as String, options = {}, context)* as Promise<S
  */
 let render-file = promise! #(filepath as String, options = {}, context)* as Promise<String>
   options.filename := filepath
-  let template = build-from-file filepath, sift-options(options)
+  let template = compile-template-from-file filepath, sift-options(options)
   yield template(context or options.context or options)
 
-module.exports := build <<< {
-  from-file: build-from-file
+/**
+ * Handle rendering for express, which does not take a separate context and
+ * expects a callback to be invoked.
+ */
+let express(path as String, options = {}, callback as ->)!
+  (from-promise! render-file(path, options))(callback)
+
+/**
+ * A package of pre-compiled files, which can still use extends, partial, block
+ * in order to make full use of the helper suite.
+ *
+ * This is primarily meant to be used in browsers, but could be used in
+ * production-mode server apps.
+ */
+class Package
+  def constructor(@options = {})
+    @factories := {}
+    @templates := {}
+  
+  let with-leading-slash(filepath as String)
+    if filepath.char-code-at(0) != "/".char-code-at(0)
+      "/" & filepath
+    else
+      filepath
+  
+  /**
+   * Set a filepath in the package to have a certain generator which will
+   * become a promise, as well as any options.
+   *
+   * Returns `this`, for fluent APIs.
+   */
+  def set(mutable filepath as String, generator as ->, options = {})
+    filepath := with-leading-slash filepath
+    let factory = @factories[filepath] := promise! generator
+    @templates[filepath] := make-template (fulfilled! factory), {[package-key]: this, filename: filepath} <<< @options <<< options
+    this
+  
+  /**
+   * Get the template for the given filepath, or throw an error if it doesn't exist.
+   */
+  def get(mutable filepath as String) as Function<Promise<String>, {}>
+    filepath := with-leading-slash filepath
+    let templates = @templates
+    if templates not ownskey filepath
+      throw EgsError "Unknown filepath: '$filepath'"
+    else
+      templates[filepath]
+  
+  /**
+   * Render a template at the given filepath with the provided data to be used
+   * as the context.
+   */
+  def render = promise! #(filepath as String, data = {})* as Promise<String>
+    let template = @get filepath
+    yield template data
+  
+  /**
+   * Find the filepath of the requested name and return the full filepath and
+   * the compiled result.
+   */
+  def _find(name as String, from-filepath as String)
+    let filepath = guess-filepath name, from-filepath
+    let factories = @factories
+    if factories not ownskey filepath
+      rejected! EgsError "Cannot find '$name' from '$filepath', tried '$filepath'"
+    else
+      fulfilled! { filepath, compiled: factories[filepath] }
+
+module.exports := compile-template <<< {
+  from-file: compile-template-from-file
   render
   render-file
-  __express(path as String, options = {}, callback as ->)!
-    let fun = from-promise! render-file(path, options)
-    fun callback
+  Package
+  EgsError
+  __express: express
+  express(options = {})
+    #(path as String, suboptions = {}, callback as ->)!
+      express(path, {} <<< options <<< suboptions, callback)
 }

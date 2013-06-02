@@ -30,3 +30,16 @@ describe "An express application", #
           .get '/'
           .expect 200
           .expect("Hello, bravo!", cb)
+      
+      it "can provide options to the global express engine", #(cb)
+        let express = require('express')
+        let app = express()
+        app.engine 'egs', egs.express { embedded-open-write: "{{", embedded-close-write: "}}", cache }
+        
+        app.get '/', #(req, res)
+          res.render "$__dirname/fixtures/hello-curly.egs", { name: "charlie" }
+        
+        request(app)
+          .get '/'
+          .expect 200
+          .expect("Hello, charlie!", cb)

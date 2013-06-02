@@ -81,7 +81,7 @@ let compile = promise! #(egs-code as String, compile-options as {})* as Promise<
  */
 let make-cache-key(options) as String
   let parts = []
-  for key in [\embedded-open, \embedded-open-write, \embedded-open-comment, \embedded-close, \embedded-close-write, \embedded-close-comment, \cache, \prelude]
+  for key in [\open, \open-write, \open-comment, \close, \close-write, \close-comment, \cache, \prelude]
     parts.push options[key] or "\0"
   parts.join "\0"
 
@@ -123,9 +123,9 @@ let compile-file = do
  * Find the filepath of the requested name and return the full filepath and
  * the compiled result.
  */
-let find-and-compile-file = promise! #(name as String, from-filepath as String, options = {})*
+let find-and-compile-file = promise! #(name as String, from-filepath as String, compile-options = {})*
   let filepath = guess-filepath name, from-filepath
-  let compiled = yield compile-file filepath, options
+  let compiled = yield compile-file filepath, compile-options
   { filepath, compiled }
 
 /**
@@ -157,6 +157,20 @@ let make-uid()
 let handle-extends-key = make-uid()
 let write-key = make-uid()
 let package-key = make-uid()
+
+let get-compile-options(options = {})
+  {
+    options.filename
+    embedded-open: options.open
+    embedded-open-write: options.open-write
+    embedded-open-comment: options.open-comment
+    embedded-close: options.close
+    embedded-close-write: options.close-write
+    embedded-close-comment: options.close-comment
+    options.prelude
+    options.cache
+  }
+
 /**
  * Create an object full of helpers used to enable extension, partials, and blocks.
  */
@@ -172,7 +186,7 @@ let make-standard-helpers(options)
     if options[package-key]
       #(context, name) -> options[package-key]._find name, context[filepath-key]
     else
-      #(context, name) -> find-and-compile-file name, context[filepath-key], options
+      #(context, name) -> find-and-compile-file name, context[filepath-key], get-compile-options options
   {} <<< helpers <<< {
     [filepath-key]: options.filename
     [extended-by-key]: null
@@ -255,12 +269,12 @@ let make-template(compilation-p, options) as Function<Promise<String>, {}>
  */
 let sift-options(options) {
   options.filename
-  options.embedded-open
-  options.embedded-open-write
-  options.embedded-open-comment
-  options.embedded-close
-  options.embedded-close-write
-  options.embedded-close-comment
+  options.open
+  options.open-write
+  options.open-comment
+  options.close
+  options.close-write
+  options.close-comment
   options.cache
   options.escape
   options.partial-prefix
@@ -273,14 +287,14 @@ let sift-options(options) {
  * Create a template given the egs-code and options.
  */
 let compile-template(mutable egs-code as String, mutable options = {}) as Function<Promise<String>>
-  make-template compile(egs-code, sift-options(options)), options
+  make-template compile(egs-code, get-compile-options(options)), options
 
 /**
  * Create a template from a given filename and options.
  */
 let compile-template-from-file(filepath as String, options = {}) as Function<Promise<String>, {}>
   options.filename := filepath
-  make-template compile-file(filepath, sift-options(options)), options
+  make-template compile-file(filepath, get-compile-options(options)), options
 
 /**
  * Render a chunk of egs-code given the options and optional context.

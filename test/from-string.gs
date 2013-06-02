@@ -71,7 +71,7 @@ describe "from a string", #
       Hello, {{ name }}!
       {% end %}
       <%= name %>
-      """, { embedded-open: "{%", embedded-close: "%}", embedded-open-write: "{{", embedded-close-write: "}}" }
+      """, { open: "{%", close: "%}", open-write: "{{", close-write: "}}" }
       
       every-promise! [
         expect(template { name: "world", -awesome })

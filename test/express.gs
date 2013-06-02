@@ -34,7 +34,7 @@ describe "An express application", #
       it "can provide options to the global express engine", #(cb)
         let express = require('express')
         let app = express()
-        app.engine 'egs', egs.express { embedded-open-write: "{{", embedded-close-write: "}}", cache }
+        app.engine 'egs', egs.express { open-write: "{{", close-write: "}}", cache }
         
         app.get '/', #(req, res)
           res.render "$__dirname/fixtures/hello-curly.egs", { name: "charlie" }

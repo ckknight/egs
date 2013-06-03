@@ -107,7 +107,7 @@ let get-ast-pipe = do
   let unwrap-escape-h(node)
     if is-context-call(node, \escape) and node.args.length == 1
       let arg = node.args[0]
-      if arg and is-context-call(arg, \h) and arg.args.length == 1
+      if arg and (is-context-call(arg, \h) or is-context-call(arg, \html)) and arg.args.length == 1
         arg.args[0]
   /**
    * Naively check on whether the node can be numeric, i.e. whether `x + x`
@@ -334,7 +334,7 @@ let compile-file = do
   let cache = {}
   #(filepath as String, compile-options as {}, helper-names as []) as Function<Promise>
     let inner-cache = cache[filepath] ownsor= {}
-    inner-cache[make-cache-key(compile-options) & "\0" & helper-names.join("\0")] ownsor= do
+    let x = inner-cache[make-cache-key(compile-options) & "\0" & helper-names.join("\0")] ownsor= do
       let recompile-file = promise! #*
         let egs-code = yield to-promise! fs.read-file filepath, "utf8"
         yield compile egs-code, compile-options, helper-names
@@ -352,6 +352,7 @@ let compile-file = do
             current-compilation-p := recompile-file()
             current-time-p := new-time-p
           yield current-compilation-p
+    x
 
 /**
  * Find the filepath of the requested name and return the full filepath and

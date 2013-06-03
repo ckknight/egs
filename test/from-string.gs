@@ -17,14 +17,15 @@ describe "from a string", #
       
       every-promise! [
         expect(template()).to.be.rejected.with TypeError
+        expect(template({})).to.be.rejected.with TypeError
         expect(template(name: "friend")).to.eventually.equal "Hello, friend!"
         expect(template(name: 1234)).to.eventually.equal "Hello, 1234!"
         expect(template(name: '"friend"')).to.eventually.equal "Hello, &quot;friend&quot;!"
         expect(template(name: {})).to.be.rejected.with TypeError
       ]
     
-    it "allows a template to be passed in a context that can be overridden", #
-      let template = egs "Hello, <%= name %>!", name: "world"
+    it "allows a template to work even if a context variable is not provided", #
+      let template = egs "Hello, <%= name or 'world' %>!"
       
       every-promise! [
         expect(template()).to.eventually.equal "Hello, world!"
@@ -125,6 +126,22 @@ describe "from a string", #
       
       expect(template())
         .to.be.rejected.with egs.EgsError
+    
+    it "does not add two numbers that are next to each other", #
+      let template = egs """
+      <% let x = 1234 %><% let y = 5678 %><%= x %><%= y %>
+      """
+      
+      expect(template())
+        .to.eventually.equal "12345678"
+    
+    it "does not add two numbers that are next to each other, even if unescaped", #
+      let template = egs """
+      <% let x = 1234 %><% let y = 5678 %><%=h x %><%=h y %>
+      """
+      
+      expect(template())
+        .to.eventually.equal "12345678"
   
   describe "can render immediately", #
     it "without making a template first", #
@@ -138,3 +155,10 @@ describe "from a string", #
     it "allows for a data argument that overrides anything in the context", #
       expect(egs.render "Hello, <%= name %>!", { context: { name: "friend" } }, name: "world")
         .to.eventually.equal "Hello, world!"
+  
+  describe "can render synchronously", #
+    it "using a template", #
+      let template = egs "Hello, <%= name %>!"
+      promise!
+        yield template.ready()
+        expect(template.sync name: "world").to.equal "Hello, world!"

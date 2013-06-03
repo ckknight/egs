@@ -701,7 +701,7 @@ class Package
    */
   def render = promise! #(filepath as String, data = {})* as Promise<String>
     let template = @get filepath
-    yield template.maybe-sync data
+    yield template data
   
   /**
    * Render a template at the given filepath with the provided data to be used
@@ -723,6 +723,10 @@ class Package
       rejected! EgsError "Cannot find '$name' from '$filepath', tried '$filepath'"
     else
       fulfilled! { filepath, compiled: { func: factories[filepath], is-simple: false } }
+  
+  def express()
+    #(path as String, data, callback as ->)@!
+      (from-promise! @render(path, data))(callback)
 
 module.exports := compile-template <<< {
   from-file: compile-template-from-file

@@ -154,3 +154,16 @@ describe "package", #
     let hello = templates.get("hello.egs").sync
     expect(hello name: "world")
       .to.equal "Hello, world!"
+  
+  it "can provide an express-friendly API", #(cb)
+    let express = do
+      let templates = egs.Package()
+      templates.set "hello.egs", #(write, context, helpers)
+        "$(write)Hello, $(helpers.escape context.name)!"
+    
+      templates.express()
+    
+    express "hello.egs", { name: "world" }, #(err, value)
+      expect(err).to.not.exist
+      expect(value).to.equal "Hello, world!"
+      cb()

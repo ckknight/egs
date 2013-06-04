@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en-us">
+<head>
+  <meta http-equiv="content-type" content="text/html;charset=UTF-8" />
+  <title>Embedded GorillaScript (EGS)</title>
+  <link rel="stylesheet" href="css/style.css" />
+	<link rel="stylesheet" href="css/prism.css" />
+  <link href="favicon.ico" rel="shortcut icon" type="image/x-icon" />
+</head>
+<body>
+	<header>
+    <img src="logo.png" class="logo" />
+		<h1 class="title">Embedded GorillaScript (EGS)</h1>
+		<span id="github"><a href="http://github.com/ckknight/egs">Fork on Github</a></span>
+		<p>a fully async text and HTML templating library using <a href="http://ckknight.github.io/gorillascript">GorillaScript</a>. <a href="http://expressjs.com/">Express</a> compliant.</p>
+	</header>
+	<h3 id="toc-label"><a href="#">Table of contents</a></h3>
+  <nav id="toc">
+    <ul>
+      <li><a href="#features">Features</a>
+      <li><a href="#usage">Usage</a>
+      <li><a href="#express">With Express</a>
+      <li><a href="#syntax">Syntax</a>
+      <li><a href="#inheritance">Inheritance</a>
+      <li><a href="#partials">Partials</a>
+      <li><a href="#async">Asynchrony</a>
+      <li><a href="#build">Build support</a>
+      <li><a href="#browser">Browser support</a>
+      <li><a href="#ide">Code Editor/IDE support</a>
+      <li><a href="#irc">Chat with others (IRC)</a>
+    </ul>
+  </nav>
+  <div id="try">
+    <div id="try-examples">
+      <label>Examples: <select></select></label>
+    </div>
+		<div class="code">
+      <div id="try-input-template-wrap">
+        <textarea id="try-input-template" rows="100" spellcheck="false">Hello, &lt;%= name %&gt;!</textarea>
+      </div>
+      <div id="try-input-data-wrap">
+        <textarea id="try-input-data" rows="100" spellcheck="false">{
+  name: "world"
+}</textarea>
+      </div>
+      <div id="try-output-template-wrap">
+        <textarea id="try-output-template" readonly></textarea>
+      </div>
+      <div id="try-output-result-wrap">
+        <textarea id="try-output-result" readonly></textarea>
+      </div>
+		</div>
+  </div>
+	<nav id="try-bar">
+		<a href="#try" id="try-link" class="hide">Try it out</a>
+	</nav>
+	<div id="container">
+  <section id="features">
+    <h2>Features</h2>
+    <ul>
+      <li>Highly performant</li>
+      <li><a href="http://www.html5rocks.com/en/tutorials/developertools/sourcemaps/">SourceMap</a> support</li>
+      <li>Full <a href="#async">asynchronous support</a> with nice syntax</li>
+      <li>Automatic reloading of changed templates (can be cached in production)</li>
+      <li><a href="http://ckknight.github.io/gorillascript">GorillaScript</a> code in templates</li>
+      <li>Customizable tag tokens (defaulting to <tt>&lt;%</tt>, <tt>%&gt;</tt> and similar)</li>
+      <li>Node.js and client-side support</li>
+      <li>Out-of-the-box <a href="http://expressjs.com">Express</a> support</li>
+      <li><a href="#inheritance">Inheritance, blocks</a>, <a href="#partials">partials</a></li>
+      <li>Safe escaping by default</li>
+    </ul>
+  </section>
+  
+  <section id="usage">
+    <h2>Usage</h2>
+    
+    <h3>Template</h3>
+    <pre><code class="language-egs">&lt;!DOCTYPE html&gt;
+&lt;html&gt;
+  &lt;head&gt;
+    &lt;title&gt;&lt;%= title %&gt;&lt;/title&gt;
+  &lt;/head&gt;
+  &lt;body&gt;
+    &lt;% block header %&gt;
+    &lt;% block content %&gt;
+    &lt;footer&gt;
+      &lt;% block footer: %&gt;
+        &lt;ul&gt;
+          &lt;% for item in footer-items: %&gt;
+            &lt;li&gt;&lt;a href="&lt;%= item.url %&gt;"&gt;&lt;%= item.name %&gt;&lt;/a&gt;&lt;/li&gt;
+          &lt;% else: %&gt;
+            &lt;li&gt;-&lt;/li&gt;
+          &lt;% end %&gt;
+        &lt;/ul&gt;
+      &lt;% end %&gt;
+    &lt;/footer&gt;
+  &lt;/body&gt;
+&lt;/html&gt;
+</code></pre>
+    
+    <h3>JavaScript</h3>
+    <pre><code class="language-javascript">var EGS = require('egs');
+
+// the following both essentially do the same thing in different ways
+EGS.renderFile("index.egs", { footerItems: [{ url: "/copyright", name: "Copyright (c) 2013" }] })
+  .then(
+    function (html) {
+      sendToClient(html);
+    },
+    function (err) {
+      handleError(err);
+    });
+
+var indexTemplate = EGS.fromFile("index.egs", { extraOptions: "here" });
+indexTemplate({ footerItems: [{ url: "/copyright", name: "Copyright (c) 2013" }] })
+  .then(
+    function (html) {
+      sendToClient(html);
+    },
+    function (err) {
+      handleError(err);
+    });
+</code></pre>
+    
+    <p>or with literal EGS code:</p>
+    
+    <pre><code class="language-javascript">var EGS = require('egs');
+
+EGS.render("Hello, &lt;%= name %&gt;!", { name: "world" })
+  .then(
+    function (html) {
+      sendToClient(html);
+    },
+    function (err) {
+      handleError(err);
+    });
+
+var indexTemplate = EGS("Hello, &lt;%= name %&gt;!", { extraOptions: "here" });
+indexTemplate({ name: "world" })
+  .then(
+    function (html) {
+      sendToClient(html);
+    },
+    function (err) {
+      handleError(err);
+    });
+</code></pre>
+
+    <p>All functions return <a href="promises-aplus.github.io/promises-spec/">Promises/A+</a>-compliant promises or functions which return such promises.</p>
+  </section>
+  
+  <section id="with-express">
+    <pre><code class="language-javascript">var express = require('express');
+var app = express();
+// the following line is unnecessary if you don't want to supply any global options
+app.engine("egs", require('egs').express({ options: "here" }));
+
+app.get('/', function (req, res) {
+  res.render('index.egs', { name: "friend" });
+});
+
+app.listen(3000);
+console.log('Listening on port 3000');
+</code></pre>
+    
+    <p>EGS provides the standard <code class="language-javascript">.__express</code> function, so simply requesting a template with the extension <tt>.egs</tt> will work. If you wish to provide any custom global options such as custom tag tokens, then it just takes one line.</p>
+  </section>
+  
+  <section id="syntax">
+    <h2>Syntax</h2>
+    
+    <h3>Escaped output</h3>
+    <pre><code class="language-egs">&lt;%= some-variable %&gt;</code></pre>
+    
+    <p>With the default escaper, if a value has a <code class="language-javascript">.toHTML()</code> method, that will be invoked and used as the escaped text. Otherwise, it will escape it for HTML.</p>
+    
+    <h3>Unescaped output</h3>
+    <pre><code class="language-egs">&lt;%=h some-variable %&gt;</code></pre>
+    <p>As you might suspect, <code class="language-gorillascript">h</code> (an alias for <code class="language-gorillascript">html</code>) is simply a helper function that wraps the variable in a box with a <code class="language-javascript">.toHTML()</code> method. Well, that&#8217;s a half-truth: an optimizer has a special case to turn all <code class="language-gorillascript">escape(h(value))</code>s into <code class="language-gorillascript">value</code>s.</p>
+    
+    <h3>Custom-escaped output</h3>
+    <pre><code class="language-egs">&lt;script&gt;var x = "&lt;%=j some-variable %&gt;";&lt;/script&gt;</code></pre>
+    <p>The <code class="language-gorillascript">j</code> helper (an alias for <code class="language-gorillascript">javascript</code>) escapes text to be placed inside of a JavaScript string, turning <code class="language-gorillascript">"\r"</code> into <code class="language-gorillascript">"\\r"</code> and similar.</p>
+    
+    <h3>GorillaScript code</h3>
+    <pre><code class="language-egs">&lt;% let items = ["hello", 'there', \friend] %&gt;
+&lt;% for item in items: %&gt;
+  &lt;%= item %&gt;
+&lt;% end %&gt;
+&lt;% if user.authenticated: %&gt;
+  &lt;% partial "user" %&gt;
+&lt;% else: %&gt;
+  &lt;% partial "auth" %&gt;
+&lt;% end %&gt;
+</code></pre>
+  </section>
+  
+  <section id="inheritance">
+    <h2>Inheritance</h2>
+    
+    <p>Templates can specify a layout to extend from, which is simply just another <tt>.egs</tt> file. Layouts have no problem inheriting from their own super-layouts as well.</p>
+    
+    <p>Layouts can specify <tt>block</tt>s of content which can be filled out by templates inheriting from the layout, but can have their own placeholder in case they aren&#8217;t.</p>
+    
+    <dl>
+      <dt><tt>layout.egs</tt></dt>
+      <dd><pre><code class="language-egs">&lt;!DOCTYPE html&gt;
+&lt;html&gt;
+  &lt;head&gt;
+    &lt;title&gt;&lt;%= title %&gt;&lt;/title&gt;
+  &lt;/head&gt;
+  &lt;body&gt;
+    &lt;% block content %&gt;
+  &lt;/body&gt;
+&lt;/html&gt;
+</code></pre><dd>
+      <dt><tt>main.egs</tt></dt>
+      <dd><pre><code class="language-egs">&lt;% extends "layout" %&gt;
+
+Any text outside of a block is ignored.
+
+&lt;% block content: %&gt;
+  &lt;% block nav %&gt;
+  &lt;% block main: %&gt;
+    Better fill this with something!
+  &lt;% end %&gt;
+  &gt;% block footer %&gt;
+&lt;% end %gt;
+</code></pre><dd>
+      <dt><tt>index.egs</tt></dt>
+      <dd><pre><code class="language-egs">&lt;% extends "main" %&gt;
+
+&lt;% block nav: &gt;
+  &lt;nav&gt;
+    &lt;a href="/somewhere-cool"&gt;Somewhere cool&lt;/a&gt;
+  &lt;/nav&gt;
+&lt;% end %gt;
+&lt;% block main: %&gt;
+  &lt;p&gt;Welcome!&lt;/p&gt;
+&lt;% end %&gt;
+</code></pre><dd>
+    </dl>
+  </section>
+  
+  <section id="partials">
+    <h2>Partials</h2>
+    
+    <p>Partials are a way to segment different portions of your template into reusable chunks, and is highly recommended to use.</p>
+    
+    <p>Requesting a partial by default prefixes the filename with <code class="language-javascript">"_"</code>, but that can be overridden with the <code class="language-javascript">partialPrefix</code> option.</p>
+    
+    <dl>
+      <dt><tt>_auth.egs</tt></dt>
+      <dd><pre><code class="language-egs">&lt;form action="/auth" method="post"&gt;
+  &lt;label&gt;Username: &lt;input name="username"&gt;&lt;/label&gt;
+  &lt;label&gt;Password: &lt;input name="password" type="password"&gt;&lt;/label&gt;
+&lt;/form&gt;
+</code></pre><dd>
+      <dt><tt>_user.egs</tt></dt>
+      <dd><pre><code class="language-egs">&lt;p&gt;
+  Welcome, &lt;%= username %&gt;!
+  &lt;a href="/logout"&gt;Logout&gt;
+&lt;/p&gt;
+</code></pre><dd>
+      <dt><tt>main.egs</tt></dt>
+      <dd><pre><code class="language-egs">&lt;% extends "layout" %&gt;
+
+&lt;% block user: &gt;
+  &lt;% if user.is-logged-in: %&gt;
+    &lt;%-- all context variables, including `user`, from this context are passed in automatically as well. --%&gt;
+    &lt;% partial "user", username: user.username &gt;
+  &lt;% else: %&gt;
+    &lt;% partial "auth" &gt;
+  &lt;% end %&gt;
+&lt;% end %&gt;
+</code></pre><dd>
+    </dl>
+  </section>
+  
+  <section id="async">
+    <h2>Asynchrony</h2>
+    
+    <p>EGS piggy-backs on top of GorillaScript's amazing <a href="http://ckknight.github.io/gorillascript/#promises">Promise</a> support, and inside any <tt>.egs</tt> templates, one can <code class="language-gorillascript">yield</code> a Promise to suspend the current rendering, wait for the result (without blocking), and resume rendering once the result is received.</p>
+    
+    <p>In fact, the <a href="#partials">partials</a> and <a href="#inheritance">extends</a> support use promises in its backend to asynchronously fetch the requested file, compile to a template, then run.</p>
+    
+    <pre><code class="language-egs">Here's some starting code
+
+Started at &lt;%= Date() %&gt;
+
+And we're about to wait...
+&lt;% yield delay! 1000_ms %&gt;
+And we're done, without blocking the rest of the app!
+
+Or if we want to request actual information:
+&lt;% let data = yield gimme-some-data(50_items, timeout: 200_ms) %&gt;
+And now the `data` variable is full of juicy information
+
+&lt;%= data %&gt;
+
+Going to be at least 1 second more than the first time:
+Done at &lt;%= Date() %&gt;
+    </code></pre>
+  </section>
+  
+  <section id="build">
+    <h2>Build support</h2>
+    
+    <p>TODO: Add grunt support, possibly a command-line interface to package up a folder.</p>
+  </section>
+  
+  <section id="browser">
+    <h2>Browser support</h2>
+    
+    <p>There is a browser-specific version of EGS (<tt>egs-browser.js</tt>) that allows you to run pre-packaged templates or, if GorillaScript is available, compile on-demand. It is not recommended for production to compile templates on demand, though, as it could be done ahead-of-time.</p>
+  </section>
+  
+  <section id="ide">
+    <h2>Code Editor/IDE support</h2>
+    
+    <ul>
+      <li>TextMate: <strong>ckknight</strong>'s <a href="https://github.com/ckknight/GorillaScript.tmbundle">GorillaScript TextMate bundle</a> includes support for EGS</li>
+    </ul>
+    
+    <p>If you would like to contribute to this list, please <a href="https://github.com/ckknight/egs/issues">file an issue</a>.</p>
+  </section>
+  
+  <section id="irc">
+    <h2>Chat with others (IRC)</h2>
+    
+    <p><a href="http://en.wikipedia.org/wiki/Internet_Relay_Chat"><abbr title="Internet Relay Chat">IRC</abbr></a> is a way to chat with other GorillaScript developers, likely including the author (depending on) and other contributors. Feel free to join us at <tt>#gorillascript</tt> on <tt>irc.freenode.net</tt>.</p>
+    
+    <p><button id="irc-button" data-url="http://webchat.freenode.net/?channels=gorillascript">Click to open <tt>#gorillascript</tt></button></p>
+  </section>
+  
+	</div>
+	<footer>
+		<p>Embedded GorillaScript (EGS) is licensed under <a href="http://opensource.org/licenses/MIT">The MIT License</a></p>
+	</footer>
+  
+  
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.9.0/jquery.min.js"></script>
+  <script src="lib/code.min.js" data-manual="true"></script>
+</body>
+</html>
+

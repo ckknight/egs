@@ -387,7 +387,7 @@ let compile-file = do
   let cache = {}
   #(filepath as String, compile-options as {}, helper-names as []) as Function<Promise>
     let inner-cache = cache[filepath] ownsor= {}
-    let x = inner-cache[make-cache-key(compile-options) & "\0" & helper-names.join("\0")] ownsor= do
+    inner-cache[make-cache-key(compile-options) & "\0" & helper-names.join("\0")] ownsor= do
       let recompile-file = promise! #*
         let egs-code = yield to-promise! fs.read-file filepath, "utf8"
         yield compile egs-code, compile-options, helper-names
@@ -405,7 +405,6 @@ let compile-file = do
             current-compilation-p := recompile-file()
             current-time-p := new-time-p
           yield current-compilation-p
-    x
 
 /**
  * Find the filepath of the requested name and return the full filepath and
@@ -479,7 +478,7 @@ let helpers-proto = {} <<< helpers <<< {
       let mutable result = write
       if block
         root-helpers.__in-block$ := true
-        result := yield promise! block write
+        result := yield promise!(true) block write
         root-helpers.__in-block$ := false
       result
   
@@ -698,6 +697,150 @@ let express(path as String, options = {context: null}, callback as ->)!
   (from-promise! render-file(path, options))(callback)
 
 /**
+ * Traverse through a directory and find all filepaths with a particular extension.
+ */
+let find-all-extensioned-filepaths = promise! #(dirpath as String, ext as String)*
+  let paths = yield to-promise! fs.readdir dirpath
+  let result = []
+  yield promisefor(3) p in paths
+    let joined-path = path.join dirpath, p
+    let stat = yield to-promise! fs.stat joined-path
+    if stat.is-directory()
+      result.push ...(yield find-all-extensioned-filepaths(joined-path, ext))
+    else if stat.is-file() and path.extname(p) == ext
+      result.push joined-path
+  result.sort()
+
+/**
+ * Compile a folder of `.egs` files into a single `.js` file that exports
+ * a single `Package` with the files referenced by the path relative to
+ * `input-dirpath`.
+ */
+let compile-package = promise! #(input-dirpath as String, output-filepath as String, options = {})*
+  let dirstat = yield to-promise! fs.stat input-dirpath
+  if not dirstat.is-directory()
+    throw Error "Expected '$(input-dirpath)' to be a directory."
+  let input-filepaths = yield find-all-extensioned-filepaths input-dirpath, ".egs"
+  let gorillascript = yield get-gorillascript()
+  let macros = yield get-prelude-macros(options.prelude)
+  let ast-pipe = yield get-ast-pipe(get-helper-names({}))
+  let full-ast-pipe(mutable root, , ast)
+    let files-assigned = {}
+    let is-do-wrap(node)
+      node instanceof ast.Call and (node.func instanceof ast.Func or (node.func instanceof ast.Binary and node.func.op == "." and node.func.left instanceof ast.Func and node.func.right.is-const() and node.func.right.const-value() in [\call, \apply]))
+    let assign-files(node)
+      if node.pos.file and files-assigned not ownskey node.pos.file and is-do-wrap(node)
+        files-assigned[node.pos.file] := true
+        ast.Call node.pos,
+          ast.Access node.pos,
+            ast.Ident node.pos, \templates
+            ast.Const node.pos, \set
+          [
+            ast.Const node.pos, path.relative(input-dirpath, node.pos.file)
+            node
+          ]
+
+    root := ast-pipe(root).walk assign-files
+    ast.Root root.pos,
+      ast.Call root.pos,
+        ast.Access root.pos,
+          ast.Func root.pos,
+            null
+            [ast.Ident root.pos, \factory]
+            []
+            ast.IfStatement root.pos,
+              ast.And root.pos,
+                ast.Binary root.pos,
+                  ast.Unary root.pos,
+                    \typeof
+                    ast.Ident root.pos, \module
+                  "!=="
+                  ast.Const root.pos, \undefined
+                ast.Access root.pos,
+                  ast.Ident root.pos, \module
+                  ast.Const root.pos, \exports
+              ast.Assign root.pos,
+                ast.Access root.pos,
+                  ast.Ident root.pos, \module
+                  ast.Const root.pos, \exports
+                ast.Call root.pos,
+                  ast.Ident root.pos, \factory
+                  [
+                    ast.Call root.pos,
+                      ast.Ident root.pos, \require
+                      [ast.Const root.pos, \egs]
+                  ]
+              ast.IfStatement root.pos,
+                ast.And root.pos,
+                  ast.Binary root.pos,
+                    ast.Unary root.pos,
+                      \typeof
+                      ast.Ident root.pos, \define
+                    "==="
+                    ast.Const root.pos, \function
+                  ast.Access root.pos,
+                    ast.Ident root.pos, \define
+                    ast.Const root.pos, \amd
+                ast.Call root.pos,
+                  ast.Ident root.pos, \define
+                  [
+                    ast.Arr root.pos, [ast.Const root.pos, "egs"]
+                    ast.Ident root.pos, \factory
+                  ]
+                ast.Assign root.pos,
+                  ast.Access root.pos,
+                    ast.This root.pos,
+                    ast.Const root.pos, options.global-export or \EGSTemplates
+                  ast.Call root.pos,
+                    ast.Ident root.pos, \factory
+                    [
+                      ast.Access root.pos,
+                        ast.This root.pos,
+                        ast.Const root.pos, \EGS
+                    ]
+          ast.Const root.pos, \call
+        [
+          ast.This root.pos
+          ast.Func root.pos,
+            null
+            [
+              ast.Ident root.pos, \EGS
+            ]
+            [\templates]
+            ast.Block root.pos, [
+              ast.IfStatement root.pos,
+                ast.Unary root.pos,
+                  "!"
+                  ast.Ident root.pos, \EGS
+                ast.Throw root.pos,
+                  ast.Call root.pos,
+                    ast.Ident root.pos, \Error
+                    [ast.Const root.pos, "Expected EGS to be available"]
+              ast.Assign root.pos,
+                ast.Ident root.pos, \templates
+                ast.Call root.pos,
+                  ast.Access root.pos,
+                    ast.Ident root.pos, \EGS
+                    ast.Const root.pos, \Package
+                  []
+              root.body
+              ast.Return root.pos,
+                ast.Ident root.pos, \templates
+            ]
+        ]
+      []
+      []
+  yield gorillascript.compile-file {
+    input: input-filepaths
+    output: output-filepath
+    +embedded
+    +embedded-generator
+    +noindent
+    macros
+    ast-pipe: full-ast-pipe
+  }
+
+/**
  * A package of pre-compiled files, which can still use extends, partial, block
  * in order to make full use of the helper suite.
  *
@@ -716,23 +859,12 @@ class Package
       filepath
   
   /**
-   * Set a filepath in the package to have a certain function as well as any options.
-   *
-   * Returns `this`, for fluent APIs.
-   */
-  def set(mutable filepath as String, func as ->, options = {})
-    filepath := with-leading-slash filepath
-    @factories[filepath] := func
-    @templates[filepath] := make-template return-same(fulfilled! { func, is-simple: false }), make-helpers-factory({__in-package$: this, filename: filepath} <<< @options <<< options), true
-    this
-  
-  /**
    * Set a filepath in the package to have a certain generator which will
    * become a promise, as well as any options.
    *
    * Returns `this`, for fluent APIs.
    */
-  def set-generator(mutable filepath as String, generator as ->, options = {})
+  def set(mutable filepath as String, generator as ->, options = {})
     filepath := with-leading-slash filepath
     let factory = @factories[filepath] := promise! generator
     @templates[filepath] := make-template return-same(fulfilled! { func: factory, is-simple: false }), make-helpers-factory({__in-package$: this, filename: filepath} <<< @options <<< options), true
@@ -788,6 +920,7 @@ module.exports := compile-template <<< {
   render
   render-file
   with-egs-prelude
+  compile-package
   Package
   EgsError
   compile(egs-code as String = "", options = {}, helper-names = [])

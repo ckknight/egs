@@ -68,6 +68,7 @@
       <li>Out-of-the-box <a href="http://expressjs.com">Express</a> support</li>
       <li><a href="#inheritance">Inheritance, blocks</a>, <a href="#partials">partials</a></li>
       <li>Safe escaping by default</li>
+      <li>Coverage support</li>
     </ul>
   </section>
   
@@ -306,7 +307,9 @@ Done at &lt;%= Date() %&gt;
   <section id="build">
     <h2>Build support</h2>
     
-    <p>TODO: Add grunt support, possibly a command-line interface to package up a folder.</p>
+    <p>There is a command-line <tt>egs</tt> binary that can be used to generate packages or to render templates ad-hoc. Using <tt>egs -p "folder/path"</tt>, you can very easily package up a whole folder of <tt>.egs</tt> files into a single <tt>.js</tt> file. You can even choose to add coverage or SourceMap support.</p>
+    
+    <p>TODO: Add grunt support.</p>
   </section>
   
   <section id="browser">

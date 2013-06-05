@@ -40,14 +40,14 @@ module.exports := #(grunt)
     mochaTest:
       test:
         options:
-          timeout: 2_000_ms
+          timeout: 10_000_ms
           require: "test/setup"
         src: ["test/*.gs"]
       
       "test-cov":
         options:
           reporter: "html-cov"
-          timeout: 2_000_ms
+          timeout: 10_000_ms
           require: "test/setup"
           quiet: true
         src: ["test/*.gs"]

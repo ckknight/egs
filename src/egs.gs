@@ -836,6 +836,14 @@ let compile-package = promise! #(input-dirpath as String, output-filepath as Str
     +embedded
     +embedded-generator
     +noindent
+    embedded-open: options.open
+    embedded-open-write: options.open-write
+    embedded-open-comment: options.open-comment
+    embedded-close: options.close
+    embedded-close-write: options.close-write
+    embedded-close-comment: options.close-comment
+    options.coverage
+    options.source-map
     macros
     ast-pipe: full-ast-pipe
   }

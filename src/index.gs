@@ -4,6 +4,7 @@ jQuery #($)
   let handle-try = do
     let mutable compiling = false
     let handle()
+      current-template := void
       if compiling
         handle-try()
         return
@@ -18,7 +19,7 @@ jQuery #($)
       else
         $("#try-input-template-wrap").remove-class("error")
         $("#try-output-template").val result.code
-      update-result()
+      set-timeout update-result, 10
     let mutable interval = void
     #
       if interval?
@@ -61,7 +62,7 @@ jQuery #($)
       let text = $("#try-input-data").val()
       if text != last-text
         last-text := text
-        update-result()), 17
+        set-timeout update-result, 250), 17
   let safe(func) -> #
     try
       return func@ this, ...arguments

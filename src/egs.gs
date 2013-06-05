@@ -128,6 +128,61 @@ let get-ast-pipe = do
           return left instanceof ast.Ident and left.name == "context" and right.is-const() and right.const-value() == function-name
       false
     /**
+     * Convert `write.call(any, ...args)` to `write(...args)` and `write.apply(any, args)` to `write(args[0])`
+     */
+    let convert-write-call-to-write(node)
+      if node instanceof ast.Call
+        let func = node.func
+        if func instanceof ast.Binary and func.op == "." and func.left instanceof ast.Ident and func.left.name == \write and func.right.is-const()
+          switch func.right.const-value()
+          case \call
+            ast.Block node.pos, [
+              node.args[0]
+              ast.Call node.pos,
+                func.left,
+                node.args[1 to -1]
+            ]
+          case \apply
+            ast.Block node.pos, [
+              node.args[0]
+              if node.args[1].is-noop()
+                  ast.Call node.pos,
+                    func.left
+                    [
+                      ast.IfExpression node.args[1].pos,
+                        ast.Access node.args[1].pos,
+                          node.args[1]
+                          ast.Const node.args[1], 1
+                        ast.Call node.pos,
+                          ast.Access node.pos,
+                            ast.Ident node.pos, \context
+                            ast.Const node.pos, \escape
+                          [ast.Access node.args[1].pos,
+                            node.args[1]
+                            ast.Const node.args[1], 0]
+                        ast.Access node.args[1].pos,
+                          node.args[1]
+                          ast.Const node.args[1], 0
+                    ]
+              else
+                ast.Call node.pos,
+                  func.left
+                  [
+                    ast.Call node.args[1].pos,
+                      ast.Access node.pos,
+                        ast.Ident node.pos, \context
+                        ast.Const node.args[1].pos, \__maybe-escape
+                      [
+                        ast.Access node.pos,
+                          ast.Ident node.pos, \context
+                          ast.Const node.pos, \escape
+                        node.args[1]
+                      ]
+                  ]
+            ]
+          default
+            void
+    /**
      * Convert `write(value, true)` to `write(context.escape(value))`
      */
     let convert-write-true-to-write-escape(node)
@@ -244,14 +299,14 @@ let get-ast-pipe = do
         if has-extends node
           node.walk remove-writes-in-function
     /**
-     * Convert `write(value)` to `write += value`
+     * Convert `write(value)` to `write += value` and `write.apply(any, arr)` to `write += arr[0]`
      */
     let convert-write-to-string-concat(node)
       if is-call node, \write
         ast.Binary(node.pos,
           node.func
           "+="
-          node.args[0]).walk-with-this convert-write-to-string-concat
+          node.args[0]).walk convert-write-to-string-concat
     let prepend(left, node)
       if node instanceof ast.Binary and node.op == "+"
         ast.Binary left.pos,
@@ -349,6 +404,7 @@ let get-ast-pipe = do
         
     #(helper-names) #(root)
       root
+        .walk convert-write-call-to-write
         .walk convert-write-true-to-write-escape
         .walk unwrap-escape-h
         .walk merge-writes
@@ -982,6 +1038,8 @@ let compile-package = promise! #(input-dirpath as String, output-filepath as Str
     options.source-map
     options.undefined-name
     options.uglify
+    options.encoding
+    options.linefeed
     macros
     ast-pipe: full-ast-pipe
   }

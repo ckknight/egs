@@ -31,3 +31,13 @@ exports.j := exports.javascript := do
   let regex = r"""[\\\r\u2028\u2029\n\f'"\t]"""g
   #(text)
     RawHTML String(text).replace regex, replacer
+
+/**
+ * Given the escape function and an array of [value, shouldEscape], return
+ * either the value or the escaped value.
+ */
+exports.__maybe-escape := #(escape as ->, arr as [])
+  if arr[1]
+    escape(arr[0])
+  else
+    arr[0]

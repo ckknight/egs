@@ -159,6 +159,90 @@ describe "from a string", #
       
       expect(template())
         .to.eventually.equal "12345678"
+    
+    it "allows calling write directly", #
+      let template = egs """
+      <% write "Hello, <world>!" %>
+      """
+      
+      expect(template())
+        .to.eventually.equal "Hello, <world>!"
+    
+    it "allows calling write w/true directly", #
+      let template = egs """
+      <% write "Hello, <world>!", true %>
+      """
+      
+      expect(template())
+        .to.eventually.equal "Hello, &lt;world&gt;!"
+    
+    it "allows calling write.call directly", #
+      let template = egs """
+      <% write.call null, "Hello, <world>!" %>
+      """
+      
+      expect(template())
+        .to.eventually.equal "Hello, <world>!"
+    
+    it "allows calling write.call w/true directly", #
+      let template = egs """
+      <% write.call null, "Hello, <world>!", true %>
+      """
+      
+      expect(template())
+        .to.eventually.equal "Hello, &lt;world&gt;!"
+    
+    it "allows calling write.apply directly", #
+      let template = egs """
+      <% write.apply null, ["Hello, <world>!"] %>
+      """
+      
+      expect(template())
+        .to.eventually.equal "Hello, <world>!"
+    
+    it "allows calling write.apply w/true directly", #
+      let template = egs """
+      <% write.apply null, ["Hello, <world>!", true] %>
+      """
+      
+      expect(template())
+        .to.eventually.equal "Hello, &lt;world&gt;!"
+  
+    it "allows calling write.apply directly with an ident", #
+      let template = egs """
+      <% let x = ["Hello, <world>!"]
+         write.apply null, x %>
+      """
+      
+      expect(template())
+        .to.eventually.equal "Hello, <world>!"
+    
+    it "allows calling write.apply w/true directly with an ident", #
+      let template = egs """
+      <% let x = ["Hello, <world>!", true]
+         write.apply null, x %>
+      """
+      
+      expect(template())
+        .to.eventually.equal "Hello, &lt;world&gt;!"
+  
+    it "allows calling write.apply directly with a call", #
+      let template = egs """
+      <% let x() ["Hello, <world>!"]
+         write.apply null, x() %>
+      """
+      
+      expect(template())
+        .to.eventually.equal "Hello, <world>!"
+    
+    it "allows calling write.apply w/true directly with a call", #
+      let template = egs """
+      <% let x() ["Hello, <world>!", true]
+         write.apply null, x() %>
+      """
+      
+      expect(template())
+        .to.eventually.equal "Hello, &lt;world&gt;!"
   
   describe "can render immediately", #
     it "without making a template first", #

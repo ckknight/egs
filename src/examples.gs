@@ -112,6 +112,23 @@ jQuery #($)
       """
     }
     {
+      name: "Streaming"
+      template: """
+      Let's start fetching some data: (at <%= Date() %>)
+      <% for c from to-slow-text(text): %><%= yield c %><% end %>
+      And we're done! (at <%= Date() %>)
+      """
+      data: """
+      {
+        text: "Hello, world! This part is being yielded in one character at a time."
+        to-slow-text: #(text as String)!*
+          for c in text
+            yield delay! 100_ms, ''
+            yield fulfilled! c
+      }
+      """
+    }
+    {
       name: "Comments"
       template: """
       <%-- This will not be included in the result source --%>

@@ -24,6 +24,7 @@
       <li><a href="#inheritance">Inheritance</a>
       <li><a href="#partials">Partials</a>
       <li><a href="#async">Asynchrony</a>
+      <li><a href="#streams">Streams</a>
       <li><a href="#build">Build support</a>
       <li><a href="#browser">Browser support</a>
       <li><a href="#ide">Code Editor/IDE support</a>
@@ -69,6 +70,7 @@
       <li><a href="#inheritance">Inheritance, blocks</a>, <a href="#partials">partials</a></li>
       <li>Safe escaping by default</li>
       <li>Coverage support</li>
+      <li><a href="streams">Streamable rendering</a></li>
     </ul>
   </section>
   
@@ -302,6 +304,36 @@ And now the `data` variable is full of juicy information
 Going to be at least 1 second more than the first time:
 Done at &lt;%= Date() %&gt;
     </code></pre>
+  </section>
+  
+  <section id="streams">
+    <h2>Streams</h2>
+    
+    <p>Since EGS supports <a href="#async">asynchrony</a> well, it is able to periodically send chunks of text instead of waiting until the end. If you check out the <a href="#try">Try it out</a> link at the bottom of the page, you can see this in action.</p>
+    
+    <pre><code class="language-javascript">var http = require('http');
+var egs = require('egs');
+
+http.createServer(function (req, res) {
+    res.writeHead(200, {
+      "Content-Type": "text/html"
+    });
+    egs.renderFileStream(__dirname + "/views/my-template.egs")
+      .on("data", function (chunk) {
+        res.write(chunk);
+      })
+      .on("error", function (err) {
+        res.write("oh no, we got an error!");
+        logError(err);
+      })
+      .on("end", function () {
+        res.close();
+      });
+}).listen(3000, "127.0.0.1");</code></pre>
+
+    <p>All <code class="language-javascript">render</code> methods have equivalent <code class="language-javascript">renderStream</code> variants that return a <code class="language-javascript">Stream</code> rather than a <code class="language-javascript">Promise&lt;String&gt;</code>.</p>
+    
+    <p>A <code class="language-javascript">Stream</code> is simply an <code class="language-javascript">Object</code> with an <code class="language-javascript">on</code> method, used as above. The only events are <code class="language-javascript">"data"</code>, <code class="language-javascript">"error"</code>, and <code class="language-javascript">"end"</code>. As soon as either <code class="language-javascript">"error"</code> or <code class="language-javascript">"end"</code> are emitted, no other events will occur.</p>
   </section>
   
   <section id="build">

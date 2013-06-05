@@ -24,6 +24,7 @@ jQuery #($)
       if interval?
         clear-timeout interval
       interval := set-timeout handle, 250
+  let mutable current-stream = void
   let update-result()
     let text = $("#try-input-data").val()
     async err, data <- (from-promise! GorillaScript.eval text)()
@@ -32,13 +33,21 @@ jQuery #($)
       $("#try-output-result").val("// Error reading data: $(String err)")
     else
       if current-template
-        async err, result <- (from-promise! current-template(data))()
-        if err
-          $("#try-input-data-wrap").add-class("error")
-          $("#try-output-result").val("// Error rendering template: $(String err)")
-        else
-          $("#try-input-data-wrap").remove-class("error")
-          $("#try-output-result").val(result)
+        let buffer = []
+        let stream = current-stream := current-template.stream(data)
+          .on(\data, #(text)
+            if current-stream == stream
+              $("#try-input-data-wrap").remove-class("error")
+              buffer.push text
+              $("#try-output-result").val(buffer.join ""))
+          .on(\error, #(err)
+            if current-stream == stream
+              $("#try-input-data-wrap").add-class("error")
+              $("#try-output-result").val(String(err?.stack or stack))
+              current-stream := void)
+          .on(\done, #
+            if current-stream == stream
+              current-stream := void)
   set-interval (do
     let mutable last-text = ""
     #

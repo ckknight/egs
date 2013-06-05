@@ -429,6 +429,8 @@ let get-compile-options(options = {})
     embedded-close-comment: options.close-comment
     options.prelude
     options.cache
+    options.undefined-name
+    options.uglify
   }
 
 let to-maybe-sync(promise-factory)
@@ -844,6 +846,8 @@ let compile-package = promise! #(input-dirpath as String, output-filepath as Str
     embedded-close-comment: options.close-comment
     options.coverage
     options.source-map
+    options.undefined-name
+    options.uglify
     macros
     ast-pipe: full-ast-pipe
   }

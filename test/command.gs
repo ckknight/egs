@@ -144,3 +144,15 @@ describe "egs binary", #
       expect(sandbox.EGSTemplates.render-sync "hello.egs", name: "world")
         .to.equal "Hello, world!"
       cb()
+    
+    it "can be uglified", #(cb)
+      async error, stdout, stderr <- exec "$egs-bin -p $(__dirname)/fixtures -u"
+      expect(error).to.not.exist
+      expect(stderr).to.be.empty
+      expect(stdout).to.not.match r"write"
+      let sandbox = { EGS: egs }
+      Function(stdout).call(sandbox)
+      expect(sandbox.EGSTemplates).to.be.an.instanceof egs.Package
+      expect(sandbox.EGSTemplates.render-sync "hello.egs", name: "world")
+        .to.equal "Hello, world!"
+      cb()

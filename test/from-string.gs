@@ -1,5 +1,6 @@
 let egs = require '../index'
 let {expect} = require 'chai'
+let {stub} = require 'sinon'
 
 describe "from a string", #
   describe "can build a template", #
@@ -97,6 +98,22 @@ describe "from a string", #
           .to.be.rejected.with TypeError
       ]
     
+    it "allows helper promises to be yielded", #
+      let template = egs """
+      Hello, <%= yield get-name() %>!
+      """
+      
+      every-promise! [
+        expect(template { get-name() fulfilled! "world" })
+          .to.eventually.equal "Hello, world!"
+        expect(template { get-name() fulfilled! "friend" })
+          .to.eventually.equal "Hello, friend!"
+        expect(template { get-name() rejected! RangeError() })
+          .to.be.rejected.with RangeError
+        expect(template {})
+          .to.be.rejected.with TypeError
+      ]
+    
     it "can use a custom escape", #
       let template = egs """
       Hello, <%= name %>!
@@ -162,3 +179,113 @@ describe "from a string", #
       promise!
         yield template.ready()
         expect(template.sync name: "world").to.equal "Hello, world!"
+  
+  describe "can render as a stream", #
+    it "building the template first", #(cb)
+      let template = egs "Hello, <%= name %>!"
+      let on-data = stub().with-args "Hello, world!"
+      template.stream(name: "world")
+        .on 'data', on-data
+        .on 'error', cb
+        .on 'end', #
+          expect(on-data).to.be.called-once
+          cb()
+    
+    it "without making a template", #(cb)
+      let on-data = stub().with-args "Hello, world!"
+      egs.render-stream("Hello, <%= name %>!", name: "world")
+        .on 'data', on-data
+        .on 'error', cb
+        .on 'end', #
+          expect(on-data).to.be.called-once
+          cb()
+    
+    it "streams in chunks based on yielded values", #(cb)
+      let template = egs """
+      Hello, <%= yield get-name() %>!
+      """
+      
+      let buffer = []
+      let on-data = #(data as String)
+        buffer.push data
+      let data = {
+        get-name: promise! #*
+          yield delay! 20_ms
+          "world"
+      }
+      template.stream(data)
+        .on 'data', on-data
+        .on 'error', cb
+        .on 'end', #
+          expect(buffer.join "").to.equal "Hello, world!"
+          expect(buffer.length).to.not.equal 1
+          cb()
+    
+    it "receives the error message if a throw occurs", #(cb)
+      let template = egs """
+      Hello, <% throw Error("oh noes!") %>!
+      """
+      
+      let buffer = []
+      let on-data = #(data as String)
+        buffer.push data
+      template.stream()
+        .on 'data', on-data
+        .on('error', #(err)
+          expect(err).to.be.an.instanceof Error
+          expect(err.message).to.equal "oh noes!"
+          cb())
+        .on 'end', #
+          throw Error "not expecting the 'end' event"
+    
+    it "receives the error message if a throw occurs within 'data'", #(cb)
+      let template = egs """
+      Hello!
+      """
+      
+      let my-error = {}
+      template.stream()
+        .on('data', #(data)
+          throw my-error)
+        .on('error', #(err)
+          expect(err).to.equal my-error
+          cb())
+        .on 'end', #
+          throw Error "not expecting the 'end' event"
+    
+    it "does not handle an error thrown in 'error'", #(cb)
+      let domain = require('domain').create()
+      let my-error = {}
+      domain.on 'error', #(err)!
+        expect(err).to.equal my-error
+        cb()
+      
+      domain.run #!
+        let template = egs """
+        Hello!
+        """
+        template.stream()
+          .on('data', #(v)
+            throw my-error)
+          .on('error', #(err)
+            expect(err).to.equal my-error
+            throw my-error)
+          .on 'end', #
+            throw Error "not expecting the 'end' event"
+    
+    it "does not handle an error thrown in 'end'", #(cb)
+      let domain = require('domain').create()
+      let my-error = {}
+      domain.on 'error', #(err)!
+        expect(err).to.equal my-error
+        cb()
+      
+      domain.run #!
+        let template = egs """
+        Hello!
+        """
+        template.stream()
+          .on('error', #(err)
+            throw Error "not expecting the 'error' event")
+          .on 'end', #
+            throw my-error

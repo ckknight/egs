@@ -131,13 +131,15 @@ let main = promise!
     else
       throw Error "Expected at least one filename by this point"
     
-    let result = yield egs.render code, options, context
     if argv.output
+      let result = yield egs.render code, options, context
       yield write-file argv.output, result
     else
-      process.stdout.write result
-      unless result.match r'\n$'
-        process.stdout.write "\n"
+      egs.render-stream(code, options, context)
+        .on 'data', #(data)
+          process.stdout.write data
+        .on 'error', #(error)
+          console.error error?.stack or error
   else
     let source-directory = argv._[0]
     let stat = try
@@ -163,56 +165,6 @@ let main = promise!
       let text = yield read-file output
       yield to-promise! fs.unlink output
       process.stdout.write text
-  /*
-  if not argv.compile
-    let input = yield to-promise! fs.read-file filenames[0]
-
-    options.filename := filenames[0]
-    let new-argv = ["gorilla"]
-    for item, i in process.argv
-      if item == filenames[0]
-        new-argv.push ...process.argv[i to -1]
-        break
-    process.argv := new-argv
-    return yield handle-code String input
-  
-  if argv.map
-    options.source-map := {
-      file: argv.map
-      source-root: argv["source-root"] or ""
-    }
-
-  let get-js-output-path(filename)
-    if argv.output and filenames.length == 1
-      argv.output
-    else
-      let base-dir = path.dirname filename
-      let dir = if argv.output
-        path.join argv.output, base-dir
-      else
-        base-dir
-      path.join dir, path.basename(filename, path.extname(filename)) & ".js"
-
-  if filenames.length > 1 and argv.join
-    let base-filenames = for filename in filenames
-      path.basename filename
-    process.stdout.write "Compiling $(base-filenames.join ', ') ... "
-    let compile-time = timer!
-      yield gorilla.compile-file {} <<< options <<< {
-        input: filenames
-        output: argv.output
-      }
-    process.stdout.write "$((compile-time / 1000_ms).to-fixed(3)) seconds\n"
-  else
-    for filename in filenames
-      process.stdout.write "Compiling $(path.basename filename) ... "
-      let compile-time = timer!
-        yield gorilla.compile-file {} <<< options <<< {
-          input: filename
-          output: get-js-output-path filename
-        }
-      process.stdout.write "$((compile-time / 1000_ms).to-fixed(3)) seconds\n"
-  */
 
 main.then null, #(e)
   console.error e?.stack or e

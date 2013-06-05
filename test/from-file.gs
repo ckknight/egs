@@ -1,5 +1,6 @@
 let egs = require '../index'
 let {expect} = require 'chai'
+let {stub} = require 'sinon'
 require! fs
 
 describe "from a file", #
@@ -36,6 +37,17 @@ describe "from a file", #
         it "allows for a data argument that overrides anything in the context", #
           expect(egs.render-file "$__dirname/fixtures/hello.egs", { cache, context: { name: "friend" } }, name: "world")
             .to.eventually.equal "Hello, world!"
+        
+        it "can be streamed", #(cb)
+          let stream = egs.render-file-stream "$__dirname/fixtures/hello.egs", { cache, name: "world" }
+          let buffer = []
+          let on-data(data as String) -> buffer.push data
+          stream
+            .on 'data', on-data
+            .on 'error', cb
+            .on 'end', #
+              expect(buffer.join '').to.equal 'Hello, world!'
+              cb()
   
       describe "partials", #
         it "can render a partial with a dynamic name and locals", #
@@ -59,6 +71,24 @@ describe "from a file", #
             name: "buddy"
           })
             .to.eventually.equal '[Hello, buddy!]'
+        
+        it "can be streamed", #(cb)
+          let template = egs.from-file "$__dirname/fixtures/use-partial.egs", { cache }
+          let stream = template.stream partial-name: "render-other-partial", partial-locals: {
+            partial-name: "quote-text"
+            partial-locals: {
+              text: "Hello"
+            }
+          }
+          let buffer = []
+          let on-data(data as String) -> buffer.push data
+          stream
+            .on 'data', on-data
+            .on 'error', cb
+            .on 'end', #
+              expect(buffer.join '').to.equal '[("Hello")]'
+              expect(buffer.length).to.not.equal 1
+              cb()
       
       describe "extends and blocks", #
         it "can render the layout on its own", #
@@ -87,6 +117,23 @@ describe "from a file", #
             body[sub-body[Overridden sub-body]]
             footer[Default footer]
             """
+        
+        it "can be streamed", #(cb)
+          let template = egs.from-file "$__dirname/fixtures/use-sublayout.egs", { cache }
+          let stream = template.stream()
+          let buffer = []
+          let on-data(data as String) -> buffer.push data
+          stream
+            .on 'data', on-data
+            .on 'error', cb
+            .on 'end', #
+              expect(buffer.join '').to.equal """
+                header[Overridden header]
+                body[sub-body[Overridden sub-body]]
+                footer[Default footer]
+                """
+              expect(buffer.length).to.not.equal 1
+              cb()
     
       describe "when the template file changes", #
         let filename = "$__dirname/tmp.egs"

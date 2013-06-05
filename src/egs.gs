@@ -310,6 +310,43 @@ let get-ast-pipe = do
           node.variables
           node.body
           node.declarations
+    /**
+     * Convert a function like `function (write, context, helpers) { ... return { close, iterator, next, throw } }`
+     * into `function (write, context, helpers) { ... return { ..., flush } }`
+     */
+    let add-flush-to-generator-return(node)
+      if node instanceof ast.Func and node.params.length == 3 and node.params[0].name == \write and node.params[1].name == \context and node.params[2].name == \helpers and node.body instanceof ast.BlockStatement
+        let last-statement = node.body.body[* - 1]
+        if last-statement instanceof ast.Return and last-statement.node instanceof ast.Obj
+          let pos = last-statement.pos
+          ast.Func node.pos,
+            node.name
+            node.params
+            node.variables
+            ast.BlockStatement node.body.pos, [
+              ...node.body.body[0 til -1]
+              ast.Return pos,
+                ast.Obj last-statement.node.pos, [
+                  ...last-statement.node.elements
+                  ast.Obj.Pair pos, \flush,
+                    ast.Func pos,
+                      null
+                      []
+                      [\flushed]
+                      ast.Block pos, [
+                        ast.Assign pos,
+                          ast.Ident pos, \flushed
+                          ast.Ident pos, \write
+                        ast.Assign pos,
+                          ast.Ident pos, \write
+                          ast.Const pos, ""
+                        ast.Return pos,
+                          ast.Ident pos, \flushed
+                      ]
+                ]
+            ]
+            node.declarations
+        
     #(helper-names) #(root)
       root
         .walk convert-write-true-to-write-escape
@@ -321,6 +358,7 @@ let get-ast-pipe = do
         .walk remove-context-null-check
         .walk change-context-to-helpers(helper-names)
         .walk add-helpers-to-params
+        .walk add-flush-to-generator-return
   promise! #(helper-names)*
     let get-ast-pipe = yield make-get-ast-pipe()
     get-ast-pipe(helper-names)
@@ -346,6 +384,29 @@ let compile-code = promise! #(egs-code as String, compile-options as {}, helper-
     code
   }
 
+let generator-to-promise-with-streaming(generator, stream-send)
+  let continuer(verb, arg)
+    let item = try
+      generator[verb] arg
+    catch e
+      return __defer.rejected e
+    
+    if item.done
+      __defer.fulfilled item.value
+    else
+      let text = generator.flush()
+      if text
+        try
+          stream-send text
+        catch e
+          return __defer.rejected e
+      item.value.then callback, errback, true
+  let callback(value)
+    continuer \send, value
+  let errback(value)
+    continuer \throw, value
+  callback void
+
 /**
  * Compile a chunk of egs-code to a usable function which takes a write
  * function and the context which it uses to override global access.
@@ -355,7 +416,15 @@ let compile = promise! #(egs-code as String, compile-options as {}, helper-names
   
   {
     func: if is-generator
-      promise! Function("return $code")()
+      let factory = Function("return $code")()
+      let promise-factory = promise! factory
+      promise-factory.stream := #(stream-send, ...args)
+        let generator = factory@ this, ...args
+        if generator.flush
+          generator-to-promise-with-streaming generator, stream-send
+        else
+          __generator-to-promise generator
+      promise-factory
     else
       Function("return $code")()
     is-simple: for every special in [\extends, \partial, \block]
@@ -439,6 +508,13 @@ let to-maybe-sync(promise-factory)
     maybe-sync[k] := v
   maybe-sync
 
+let flush-stream(stream-send, write as String)
+  if write and stream-send
+    stream-send write
+    ''
+  else
+    write
+
 let simple-helpers-proto = {} <<< helpers
 let helpers-proto = {} <<< helpers <<< {
   extends(name as String, locals)!
@@ -451,10 +527,11 @@ let helpers-proto = {} <<< helpers <<< {
     @__extended-by$ := @__fetch-compiled$ name
     @__extended-by-locals$ := locals
   
-  partial: to-maybe-sync promise! #(mutable name as String, write as String, locals = {})*
+  partial: to-maybe-sync promise! #(mutable name as String, mutable write as String, locals = {})*
     if not @__current-filepath$
       throw EgsError "Can only use partial if the 'filename' option is specified"
     name := path.join(path.dirname(name), @__partial-prefix$ ~& path.basename(name))
+    write := flush-stream @__stream-send$, write
     let {filepath, compiled: {func}} = yield @__fetch-compiled$ name
     let partial-helpers = {extends this
       __current-filepath$: filepath
@@ -465,10 +542,11 @@ let helpers-proto = {} <<< helpers <<< {
     else
       func write, locals, partial-helpers
   
-  block: to-maybe-sync promise! #(mutable name as String, write, inside as ->|null)*
+  block: to-maybe-sync promise! #(mutable name as String, mutable write, inside as ->|null)*
     if @__in-partial$
       throw EgsError "Cannot use block when in a partial"
-  
+
+    write := flush-stream @__stream-send$, write
     let blocks = @__blocks$
     let root-helpers = @__helpers$
     if @__extended-by$ and not root-helpers.__in-block$
@@ -497,7 +575,7 @@ let helpers-proto = {} <<< helpers <<< {
     else
       func "", locals, new-helpers
     if new-helpers.__extended-by$
-      yield new-helpers.__handle-extends$(new-helpers, text)
+      yield new-helpers.__handle-extends$@(new-helpers, text)
     else
       text
 }
@@ -571,8 +649,7 @@ let make-template(get-compilation-p as ->, make-helpers as ->, cache-compilation
     if result and result.then
       result := yield result
     if helpers.__extended-by$
-      let extension = helpers.__handle-extends$
-      yield extension.maybe-sync@(helpers, result)
+      yield helpers.__handle-extends$.maybe-sync@(helpers, result)
     else
       result
   // this is practically the above function, only synchronous
@@ -591,6 +668,38 @@ let make-template(get-compilation-p as ->, make-helpers as ->, cache-compilation
       helpers.__handle-extends$.sync@(helpers, result)
     else
       result
+  template.stream := #(data)
+    let {send: stream-send, end: stream-end, throw: stream-throw, public: stream-public} = Stream()
+    let promise = promise!
+      let mutable tmp = cache-compilation and compilation
+      if not tmp
+        tmp := yield get-compilation-p()
+        if cache-compilation
+          compilation := tmp
+      let helpers = make-helpers tmp.is-simple
+      helpers.__stream-send$ := stream-send
+      // definitely need at least a single-tick delay to allow for stream event registration
+      yield delay! 0
+      let func = tmp.func
+      let mutable result = if func.stream
+        func.stream stream-send, "", data or {}, helpers
+      else
+        func "", data or {}, helpers
+      if result and result.then
+        result := yield result
+      if helpers.__extended-by$
+        let extension = helpers.__handle-extends$
+        // TODO: convert to stream
+        yield extension@(helpers, result)
+      else
+        result
+    promise
+      .then(#(value)!
+        if value
+          stream-send value
+        stream-end())
+      .then null, stream-throw
+    stream-public
   template.ready := promise! #!*
     if cache-compilation
       if not compilation
@@ -679,6 +788,18 @@ let render = promise! #(egs-code as String, options = {context: null}, mutable c
   yield template.maybe-sync(context)
 
 /**
+ * Render a chunk of egs-code given the options and optional context, returning a stream.
+ */
+let render-stream(egs-code as String, options = {context: null}, mutable context) as SimpleEventEmitter
+  let template = compile-template egs-code, sift-options(options)
+  if not context
+    if options ownskey \context
+      context := options.context
+    else
+      context := options
+  template.stream(context)
+
+/**
  * Render a file given the options and the optional context.
  */
 let render-file = promise! #(filepath as String, options = {context: null}, mutable context)* as Promise<String>
@@ -690,6 +811,19 @@ let render-file = promise! #(filepath as String, options = {context: null}, muta
     else
       context := options
   yield template.maybe-sync(context)
+
+/**
+ * Render a file given the options and the optional context, returning a stream.
+ */
+let render-file-stream(filepath as String, options = {context: null}, mutable context) as SimpleEventEmitter
+  options.filename := filepath
+  let template = compile-template-from-file filepath, sift-options(options)
+  if not context
+    if options ownskey \context
+      context := options.context
+    else
+      context := options
+  template.stream(context)
 
 /**
  * Handle rendering for express, which does not take a separate context and
@@ -911,6 +1045,14 @@ class Package
     template.sync data
   
   /**
+   * Render a template at the given filepath with the provided data to be used
+   * as the context, returning a stream.
+   */
+  def render-stream(filepath as String, data = {}) as SimpleEventEmitter
+    let template = @get filepath
+    template.stream data
+  
+  /**
    * Find the filepath of the requested name and return the full filepath and
    * the compiled result.
    */
@@ -926,11 +1068,54 @@ class Package
     #(path as String, data, callback as ->)@!
       (from-promise! @render(path, data))(callback)
 
+/**
+ * Create a stream.
+ *
+ * The stream has a public API, as well as three functions: `send`, `throw`,
+ * and `end`.
+ *
+ * As soon as `throw` or `end` is called, no more events will be emitted.
+ *
+ * The public API consists of an Object with a single method: `on`, which is
+ * expected to take a type of 'data', 'error', or 'end' and a callback for
+ * when the event occurs. A single Stream should not register for the same
+ * event more than once.
+ */
+let Stream()
+  let mutable events as {}|null = {}
+  let complete(type, value)!
+    if events
+      let event = events[type]
+      // `events` might have callbacks with memory references we no longer
+      // care about, so we should clear it out as it won't be used anymore.
+      events := null
+      if event
+        set-immediate event, value
+  {
+    send(value as String)!
+      if events
+        let event = events.data
+        if event
+          event value
+    throw(err)!
+      complete \error, err
+    end()!
+      complete \end
+    public: {
+      on(type as String, callback as ->)
+        if events
+          events[type] := callback
+        this
+    }
+  }
+
 module.exports := compile-template <<< {
   version: __VERSION__
   from-file: compile-template-from-file
   render
   render-file
+  render-stream
+  render-file-stream
   with-egs-prelude
   compile-package
   Package

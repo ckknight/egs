@@ -41,6 +41,26 @@ describe "package", #
         .to.eventually.equal result)
     every-promise! promises
   
+  it "should be able to stream a render", #(cb)
+    let templates = egs.Package()
+    templates.set "_hello.egs", #(write, context, helpers)*
+      "$(write)Hello, $(helpers.escape context.name)!"
+    
+    templates.set "use-hello.egs", #(mutable write, context, helpers)*
+      write &= "["
+      write := yield helpers.partial "hello", first!(write, (write := '')), context
+      write & "]"
+    
+    let buffer = []
+    let on-data(data) -> buffer.push data
+    templates.render-stream "use-hello.egs", {name: "world"}
+      .on 'data', on-data
+      .on 'error', cb
+      .on 'end', #
+        expect(buffer.join "").to.equal "[Hello, world!]"
+        expect(buffer.length).to.not.equal 1
+        cb()
+  
   it "should be able to reference another file as a partial without extensions", #
     let templates = egs.Package()
     templates.set "_hello", #(write, context, helpers)*

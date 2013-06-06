@@ -25,6 +25,7 @@
       <li><a href="#partials">Partials</a>
       <li><a href="#async">Asynchrony</a>
       <li><a href="#streams">Streams</a>
+      <li><a href="#tokens">Customizable tokens</a>
       <li><a href="#build">Build support</a>
       <li><a href="#browser">Browser support</a>
       <li><a href="#ide">Code Editor/IDE support</a>
@@ -64,7 +65,7 @@
       <li>Full <a href="#async">asynchronous support</a> with nice syntax</li>
       <li>Automatic reloading of changed templates (can be cached in production)</li>
       <li><a href="http://ckknight.github.io/gorillascript">GorillaScript</a> code in templates</li>
-      <li>Customizable tag tokens (defaulting to <tt>&lt;%</tt>, <tt>%&gt;</tt> and similar)</li>
+      <li><a href="#tokens">Customizable tag tokens</a> (defaulting to <tt>&lt;%</tt>, <tt>%&gt;</tt> and similar)</li>
       <li>Node.js and client-side support</li>
       <li>Out-of-the-box <a href="http://expressjs.com">Express</a> support</li>
       <li><a href="#inheritance">Inheritance, blocks</a>, <a href="#partials">partials</a></li>
@@ -89,6 +90,7 @@
     &lt;footer&gt;
       &lt;% block footer: %&gt;
         &lt;ul&gt;
+          &lt;%-- This is a template comment that will not be rendered --%&gt;
           &lt;% for item in footer-items: %&gt;
             &lt;li&gt;&lt;a href="&lt;%= item.url %&gt;"&gt;&lt;%= item.name %&gt;&lt;/a&gt;&lt;/li&gt;
           &lt;% else: %&gt;
@@ -97,6 +99,10 @@
         &lt;/ul&gt;
       &lt;% end %&gt;
     &lt;/footer&gt;
+    &lt;%-- the &lt;%@ and @%&gt; coming up mean to treat the internals as literal, no template magic. --%&gt;
+    &lt;script id="egs-hello" type="text/egs-template"&gt;&lt;%@
+    Hello, &lt;%= name %=&gt;
+    @%&gt;&lt;/script&gt;
   &lt;/body&gt;
 &lt;/html&gt;
 </code></pre>
@@ -334,6 +340,48 @@ http.createServer(function (req, res) {
     <p>All <code class="language-javascript">render</code> methods have equivalent <code class="language-javascript">renderStream</code> variants that return a <code class="language-javascript">Stream</code> rather than a <code class="language-javascript">Promise&lt;String&gt;</code>.</p>
     
     <p>A <code class="language-javascript">Stream</code> is simply an <code class="language-javascript">Object</code> with an <code class="language-javascript">on</code> method, used as above. The only events are <code class="language-javascript">"data"</code>, <code class="language-javascript">"error"</code>, and <code class="language-javascript">"end"</code>. As soon as either <code class="language-javascript">"error"</code> or <code class="language-javascript">"end"</code> are emitted, no other events will occur.</p>
+  </section>
+  
+  <section id="tokens">
+    <h2>Customizable tokens</h2>
+    
+    <p>Although it is recommended to use EGS' default tokens, you have a lot of customizability for them.</p>
+    
+    <p>By default, the following options are passed to the compiler:</p>
+    
+    <pre><code class="language-javascript">{
+  open: "&lt;%",
+  close: "%&gt;",
+  openWrite: "&lt;%=",
+  closeWrite: "%&gt;",
+  openComment: "&lt;%--",
+  closeComment: "--%&gt;",
+  openLiteral: "&lt;%@",
+  closeLiteral: "@%&gt;",
+}</code></pre>
+    
+    <p>Another typical set of options would be:</p>
+    
+    <pre><code class="language-javascript">{
+  open: "{%",
+  close: "%}",
+  openWrite: "{{",
+  closeWrite: "}}",
+  openComment: "{#", // or "{*"
+  closeComment: "#}", // or "*}"
+  openLiteral: "{@",
+  closeLiteral: "@}",
+}</code></pre>
+
+    <p>To make your template look like so:</p>
+    
+    <pre><code class="language-egs">Hello, {{ name }}
+{% if been-good: %}
+  Well, you deserve a cookie.
+{% else: %}
+  {# this guy totally doesn't deserve a cookie #}
+  Try harder next time.
+{% end %}</code></pre>
   </section>
   
   <section id="build">

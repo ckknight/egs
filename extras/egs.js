@@ -1,6 +1,6 @@
 ;(function (root) {
   "use strict";
-  var EGS = function (realRequire) {
+  var _EGS = function (realRequire) {
     function require(path) {
       var has = Object.prototype.hasOwnProperty;
       if (has.call(require._cache, path)) {
@@ -19,20 +19,13 @@
       var exports = this;
       (function (GLOBAL) {
         "use strict";
-        var __create, __defer, __fromPromise, __generatorToPromise, __import, __in,
-            __isArray, __owns, __promise, __promiseLoop, __slice, __toArray,
-            __toPromise, __typeof, _ref, _this, compile, compileCode, compileFile,
-            compilePackage, EgsError, findAllExtensionedFilepaths, findAndCompileFile,
-            fs, getAstPipe, getGorillascript, getPreludeMacros, guessFilepath,
-            helpers, helpersProto, makeHelpersFactory, Package, path, render,
-            renderFile, setImmediate, simpleHelpersProto, utils, withEgsPrelude;
-        _this = this;
-        __create = typeof Object.create === "function" ? Object.create
-          : function (x) {
-            function F() {}
-            F.prototype = x;
-            return new F();
-          };
+        var __defer, __fromPromise, __generatorToPromise, __import, __in, __isArray,
+            __owns, __promise, __promiseLoop, __slice, __toArray, __toPromise,
+            __typeof, _ref, compile, compileCode, compileFile, compilePackage,
+            EGSError, egsRuntimeVersion, findAllExtensionedFilepaths,
+            findAndCompileFile, fs, getAstPipe, getPreludeMacros, gorillascript,
+            guessFilepath, makeHelpersFactory, makeTemplate, Package, path, render,
+            renderFile, setImmediate, standardHelperNames, withEgsPrelude;
         __defer = (function () {
           function __defer() {
             var deferred, isError, value;
@@ -390,35 +383,35 @@
           };
         fs = require("fs");
         path = require("path");
-        helpers = require("./helpers");
-        utils = require("./utils");
-        EgsError = (function (Error) {
-          var _EgsError_prototype, _Error_prototype;
-          function EgsError(message) {
-            var _this, err;
-            _this = this instanceof EgsError ? this : __create(_EgsError_prototype);
-            if (message == null) {
-              message = "";
+        function amdRequire(localName, amdName, globalName) {
+          var library;
+          library = require(localName);
+          if (library) {
+            return library;
+          } else if (typeof define === "function" && define.amd) {
+            return realRequire(amdName);
+          } else if (typeof root === "object" && root !== null) {
+            library = root[globalName];
+            if (!library) {
+              throw Error(globalName + " must be available before EGS is loaded");
             }
-            _this.message = message;
-            err = Error.call(_this, message);
-            if (typeof Error.captureStackTrace === "function") {
-              Error.captureStackTrace(_this, EgsError);
-            } else if ("stack" in err) {
-              _this.stack = err.stack;
-            }
-            return _this;
+            return library;
+          } else {
+            throw Error("Unable to detect runtime environment of EGS");
           }
-          _Error_prototype = Error.prototype;
-          _EgsError_prototype = EgsError.prototype = __create(_Error_prototype);
-          _EgsError_prototype.constructor = EgsError;
-          EgsError.displayName = "EgsError";
-          if (typeof Error.extended === "function") {
-            Error.extended(EgsError);
-          }
-          _EgsError_prototype.name = "EgsError";
-          return EgsError;
-        }(Error));
+        }
+        _ref = amdRequire("./runtime", "egs-runtime", "EGSRuntime");
+        Package = _ref.Package;
+        EGSError = _ref.EGSError;
+        guessFilepath = _ref.guessFilepath;
+        standardHelperNames = _ref.helperNames;
+        makeTemplate = _ref.makeTemplate;
+        makeHelpersFactory = _ref.makeHelpersFactory;
+        egsRuntimeVersion = _ref.version;
+        if (egsRuntimeVersion !== "0.2.0") {
+          throw Error("EGS and its runtime must have the same version: '0.2.0' vs. '" + egsRuntimeVersion + "'");
+        }
+        gorillascript = amdRequire("gorillascript", "gorillascript", "GorillaScript");
         function memoize(func) {
           var result;
           return function () {
@@ -429,64 +422,13 @@
             return result;
           };
         }
-        getGorillascript = memoize(function () {
-          var defer, fromRequire;
-          fromRequire = require("gorillascript");
-          if (fromRequire != null) {
-            return __defer.fulfilled(fromRequire);
-          } else if (typeof define === "function" && define.amd) {
-            defer = __defer();
-            realRequire(["gorillascript"], function (gorillascript) {
-              return defer.fulfill(gorillascript);
-            });
-            return defer.promise;
-          } else if (typeof root === "object" && root !== null) {
-            if (root.GorillaScript) {
-              return __defer.fulfilled(root.GorillaScript);
-            } else {
-              return __defer.rejected(Error("GorillaScript must be available before EGS requests it"));
-            }
-          } else {
-            return __defer.rejected(Error("Unable to detect environment, cannot load GorillaScript"));
-          }
-        });
-        function fullExtname(filename) {
-          var match;
-          match = /^[^\.]+(\..*)$/.exec(path.basename(filename));
-          if (match) {
-            return match[1];
-          } else {
-            return "";
-          }
-        }
-        guessFilepath = (function () {
-          var cache;
-          cache = {};
-          return function (name, fromFilepath) {
-            var filename, inner;
-            if (__owns.call(cache, fromFilepath)) {
-              inner = cache[fromFilepath];
-            } else {
-              inner = cache[fromFilepath] = {};
-            }
-            if (!__owns.call(inner, name)) {
-              filename = name;
-              if (!path.extname(filename)) {
-                filename += "" + fullExtname(fromFilepath);
-              }
-              return inner[name] = path.resolve(path.dirname(fromFilepath), filename);
-            } else {
-              return inner[name];
-            }
-          };
-        }());
         _ref = (function () {
           var egsPreludeCode, getEgsPreludeP, preludePathCache;
           getEgsPreludeP = memoize(__promise(function () {
-            var _e, _send, _state, _step, _throw, gorillascript, result, text;
+            var _e, _send, _state, _step, _throw, result, text;
             _state = 0;
             function _close() {
-              _state = 6;
+              _state = 5;
             }
             function _step(_received) {
               while (true) {
@@ -506,16 +448,12 @@
                   ++_state;
                 case 3:
                   ++_state;
-                  return { done: false, value: getGorillascript() };
-                case 4:
-                  gorillascript = _received;
-                  ++_state;
                   return { done: false, value: gorillascript.parse(text) };
-                case 5:
+                case 4:
                   result = _received;
                   ++_state;
                   return { done: true, value: result.macros };
-                case 6:
+                case 5:
                   return { done: true, value: void 0 };
                 default: throw Error("Unknown state: " + _state);
                 }
@@ -559,11 +497,10 @@
                 return egsPreludeP;
               } else if (!__owns.call(preludePathCache, preludePath)) {
                 return preludePathCache[preludePath] = __generatorToPromise((function () {
-                  var _e, _send, _state, _step, _throw, egsPrelude, gorillascript,
-                      result, text;
+                  var _e, _send, _state, _step, _throw, egsPrelude, result, text;
                   _state = 0;
                   function _close() {
-                    _state = 5;
+                    _state = 4;
                   }
                   function _step(_received) {
                     while (true) {
@@ -581,19 +518,15 @@
                       case 2:
                         text = _received;
                         ++_state;
-                        return { done: false, value: getGorillascript() };
-                      case 3:
-                        gorillascript = _received;
-                        ++_state;
                         return {
                           done: false,
                           value: gorillascript.parse(text, { macros: egsPrelude })
                         };
-                      case 4:
+                      case 3:
                         result = _received;
                         ++_state;
                         return { done: true, value: result.macros };
-                      case 5:
+                      case 4:
                         return { done: true, value: void 0 };
                       default: throw Error("Unknown state: " + _state);
                       }
@@ -638,432 +571,329 @@
         getPreludeMacros = _ref[0];
         withEgsPrelude = _ref[1];
         getAstPipe = (function () {
-          var makeGetAstPipe;
-          makeGetAstPipe = memoize(__promise(function () {
-            var _e, _send, _state, _step, _throw, addFlushToGeneratorReturn,
-                addHelpersToParams, ast, canBeNumeric, changeContextToHelpers,
-                convertLastWrite, convertWriteCallToWrite, convertWriteToStringConcat,
-                convertWriteTrueToWriteEscape, gorillascript, hasExtends, isCall,
-                isContextCall, mergeWrites, prepend, removeContextNullCheck,
-                removeWritesAfterExtends, removeWritesInFunction, unwrapEscapeH;
-            _state = 0;
-            function _close() {
-              _state = 2;
+          var ast;
+          ast = gorillascript.AST;
+          function isCall(node, functionName) {
+            var func;
+            if (node instanceof ast.Call) {
+              func = node.func;
+              return func instanceof ast.Ident && func.name === functionName;
             }
-            function _step(_received) {
-              while (true) {
-                switch (_state) {
-                case 0:
-                  ++_state;
-                  return { done: false, value: getGorillascript() };
-                case 1:
-                  gorillascript = _received;
-                  ast = gorillascript.AST;
-                  isCall = function (node, functionName) {
-                    var func;
-                    if (node instanceof ast.Call) {
-                      func = node.func;
-                      return func instanceof ast.Ident && func.name === functionName;
-                    }
-                  };
-                  isContextCall = function (node, functionName) {
-                    var func, left, right;
-                    if (node instanceof ast.Call) {
-                      func = node.func;
-                      if (func instanceof ast.Binary && func.op === ".") {
-                        left = func.left;
-                        right = func.right;
-                        return left instanceof ast.Ident && left.name === "context" && right.isConst() && right.constValue() === functionName;
-                      }
-                    }
-                    return false;
-                  };
-                  convertWriteCallToWrite = function (node) {
-                    var func;
-                    if (node instanceof ast.Call) {
-                      func = node.func;
-                      if (func instanceof ast.Binary && func.op === "." && func.left instanceof ast.Ident && func.left.name === "write" && func.right.isConst()) {
-                        switch (func.right.constValue()) {
-                        case "call":
-                          return ast.Block(node.pos, [
-                            node.args[0],
-                            ast.Call(node.pos, func.left, __slice.call(node.args, 1))
-                          ]);
-                        case "apply":
-                          return ast.Block(node.pos, [
-                            node.args[0],
-                            node.args[1].isNoop()
-                              ? ast.Call(node.pos, func.left, [
-                                ast.IfExpression(
-                                  node.args[1].pos,
-                                  ast.Access(node.args[1].pos, node.args[1], ast.Const(node.args[1], 1)),
-                                  ast.Call(
-                                    node.pos,
-                                    ast.Access(
-                                      node.pos,
-                                      ast.Ident(node.pos, "context"),
-                                      ast.Const(node.pos, "escape")
-                                    ),
-                                    [
-                                      ast.Access(node.args[1].pos, node.args[1], ast.Const(node.args[1], 0))
-                                    ]
-                                  ),
-                                  ast.Access(node.args[1].pos, node.args[1], ast.Const(node.args[1], 0))
-                                )
-                              ])
-                              : ast.Call(node.pos, func.left, [
-                                ast.Call(
-                                  node.args[1].pos,
-                                  ast.Access(
-                                    node.pos,
-                                    ast.Ident(node.pos, "context"),
-                                    ast.Const(node.args[1].pos, "__maybeEscape")
-                                  ),
-                                  [
-                                    ast.Access(
-                                      node.pos,
-                                      ast.Ident(node.pos, "context"),
-                                      ast.Const(node.pos, "escape")
-                                    ),
-                                    node.args[1]
-                                  ]
-                                )
-                              ])
-                          ]);
-                        default: return;
-                        }
-                      }
-                    }
-                  };
-                  convertWriteTrueToWriteEscape = function (node) {
-                    if (isCall(node, "write") && node.args.length === 2 && node.args[1].isConst() && node.args[1].constValue()) {
-                      return ast.Call(node.pos, node.func, [
+          }
+          function isContextCall(node, functionName) {
+            var func, left, right;
+            if (node instanceof ast.Call) {
+              func = node.func;
+              if (func instanceof ast.Binary && func.op === ".") {
+                left = func.left;
+                right = func.right;
+                return left instanceof ast.Ident && left.name === "context" && right.isConst() && right.constValue() === functionName;
+              }
+            }
+            return false;
+          }
+          function convertWriteCallToWrite(node) {
+            var func;
+            if (node instanceof ast.Call) {
+              func = node.func;
+              if (func instanceof ast.Binary && func.op === "." && func.left instanceof ast.Ident && func.left.name === "write" && func.right.isConst()) {
+                switch (func.right.constValue()) {
+                case "call":
+                  return ast.Block(node.pos, [
+                    node.args[0],
+                    ast.Call(node.pos, func.left, __slice.call(node.args, 1))
+                  ]);
+                case "apply":
+                  return ast.Block(node.pos, [
+                    node.args[0],
+                    node.args[1].isNoop()
+                      ? ast.Call(node.pos, func.left, [
+                        ast.IfExpression(
+                          node.args[1].pos,
+                          ast.Access(node.args[1].pos, node.args[1], ast.Const(node.args[1], 1)),
+                          ast.Call(
+                            node.pos,
+                            ast.Access(
+                              node.pos,
+                              ast.Ident(node.pos, "context"),
+                              ast.Const(node.pos, "escape")
+                            ),
+                            [
+                              ast.Access(node.args[1].pos, node.args[1], ast.Const(node.args[1], 0))
+                            ]
+                          ),
+                          ast.Access(node.args[1].pos, node.args[1], ast.Const(node.args[1], 0))
+                        )
+                      ])
+                      : ast.Call(node.pos, func.left, [
                         ast.Call(
-                          node.pos,
+                          node.args[1].pos,
                           ast.Access(
                             node.pos,
                             ast.Ident(node.pos, "context"),
-                            ast.Const(node.pos, "escape")
+                            ast.Const(node.args[1].pos, "__maybeEscape")
                           ),
-                          [node.args[0]]
+                          [
+                            ast.Access(
+                              node.pos,
+                              ast.Ident(node.pos, "context"),
+                              ast.Const(node.pos, "escape")
+                            ),
+                            node.args[1]
+                          ]
                         )
-                      ]);
-                    }
-                  };
-                  unwrapEscapeH = function (node) {
-                    var arg;
-                    if (isContextCall(node, "escape") && node.args.length === 1) {
-                      arg = node.args[0];
-                      if (arg && (isContextCall(arg, "h") || isContextCall(arg, "html")) && arg.args.length === 1) {
-                        return arg.args[0];
-                      }
-                    }
-                  };
-                  canBeNumeric = function (node) {
-                    var _ref;
-                    if (node.isConst()) {
-                      return typeof node.constValue() !== "string";
-                    } else if (node instanceof ast.Binary) {
-                      if (node.op === "+") {
-                        return canBeNumeric(node.left) && canBeNumeric(node.right);
-                      } else {
-                        return true;
-                      }
-                    } else if (node instanceof ast.IfExpression) {
-                      return canBeNumeric(node.whenTrue) || canBeNumeric(node.whenFalse);
-                    } else if (node instanceof ast.BlockExpression || node instanceof ast.BlockStatement) {
-                      return canBeNumeric((_ref = node.body)[_ref.length - 1]);
-                    } else {
-                      return !isContextCall(node, "escape");
-                    }
-                  };
-                  mergeWrites = function (node) {
-                    var _arr, _len, body, changed, i, left, newSubnode, right,
-                        subnode, whenFalse, whenTrue;
-                    if (node instanceof ast.BlockExpression || node instanceof ast.BlockStatement) {
-                      body = node.body.slice();
-                      changed = false;
-                      for (_arr = __toArray(body), i = 0, _len = _arr.length; i < _len; ++i) {
-                        subnode = _arr[i];
-                        newSubnode = subnode.walkWithThis(mergeWrites);
-                        body[i] = newSubnode;
-                        if (newSubnode !== subnode) {
-                          changed = true;
-                        }
-                      }
-                      i = 0;
-                      while (i < body.length - 1) {
-                        left = body[i];
-                        right = body[i + 1];
-                        if (isCall(left, "write") && left.args.length === 1 && isCall(right, "write") && right.args.length === 1) {
-                          changed = true;
-                          body.splice(i, 2, ast.Call(left.pos, left.func, [
-                            ast.Binary(
-                              left.pos,
-                              canBeNumeric(left.args[0]) && canBeNumeric(right.args[0])
-                                ? ast.Binary(
-                                  left.pos,
-                                  ast.Const(left.pos, ""),
-                                  "+",
-                                  left.args[0]
-                                )
-                                : left.args[0],
-                              "+",
-                              right.args[0]
-                            )
-                          ]));
-                        } else {
-                          ++i;
-                        }
-                      }
-                      if (changed) {
-                        return ast.Block(node.pos, body, node.label);
-                      }
-                    } else if ((node instanceof ast.IfStatement || node instanceof ast.IfExpression) && !node.label) {
-                      whenTrue = node.whenTrue.walkWithThis(mergeWrites);
-                      whenFalse = node.whenFalse.walkWithThis(mergeWrites);
-                      if (isCall(whenTrue, "write") && (isCall(whenFalse, "write") || whenFalse.isNoop())) {
-                        return ast.Call(node.pos, whenTrue.func, [
-                          ast.IfExpression(node.pos, node.test.walkWithThis(mergeWrites), whenTrue.args[0], whenFalse.isNoop() ? ast.Const(whenFalse.pos, "") : whenFalse.args[0])
-                        ]);
-                      }
-                    }
-                  };
-                  hasExtends = function (node) {
-                    var FOUND;
-                    FOUND = {};
-                    try {
-                      node.walk(function (subnode) {
-                        if (subnode instanceof ast.Func) {
-                          return subnode;
-                        } else if (isContextCall(subnode, "extends")) {
-                          throw FOUND;
-                        }
-                      });
-                    } catch (e) {
-                      if (e === FOUND) {
-                        return true;
-                      } else {
-                        throw e;
-                      }
-                    }
-                    return false;
-                  };
-                  removeWritesInFunction = function (node) {
-                    if (node instanceof ast.Func) {
-                      return node;
-                    } else if (isCall(node, "write")) {
-                      return ast.Noop(node.pos);
-                    }
-                  };
-                  removeWritesAfterExtends = function (node) {
-                    if (node instanceof ast.Func && hasExtends(node)) {
-                      return node.walk(removeWritesInFunction);
-                    }
-                  };
-                  convertWriteToStringConcat = function (node) {
-                    if (isCall(node, "write")) {
-                      return ast.Binary(node.pos, node.func, "+=", node.args[0]).walk(convertWriteToStringConcat);
-                    }
-                  };
-                  prepend = function (left, node) {
-                    if (node instanceof ast.Binary && node.op === "+") {
-                      return ast.Binary(
-                        left.pos,
-                        prepend(left, node.left),
-                        "+",
-                        node.right
-                      );
-                    } else {
-                      return ast.Binary(left.pos, left, "+", node);
-                    }
-                  };
-                  convertLastWrite = function (node) {
-                    var _ref, beforeLast, last;
-                    if (node instanceof ast.BlockStatement) {
-                      last = (_ref = node.body)[_ref.length - 1];
-                      if (last instanceof ast.Return && last.node instanceof ast.Ident && last.node.name === "write") {
-                        beforeLast = (_ref = node.body)[_ref.length - 2];
-                        if (beforeLast && beforeLast instanceof ast.Binary && beforeLast.op === "+=" && beforeLast.left instanceof ast.Ident && beforeLast.left.name === "write") {
-                          return ast.BlockStatement(
-                            node.pos,
-                            __toArray(__slice.call(node.body, 0, -2)).concat([
-                              ast.Return(beforeLast.pos, prepend(beforeLast.left, beforeLast.right))
-                            ]),
-                            node.label
-                          );
-                        }
-                      }
-                    }
-                  };
-                  removeContextNullCheck = function (node) {
-                    if (node instanceof ast.Binary && node.op === "==" && node.left instanceof ast.Ident && node.left.name === "context" && node.right.isConst() && node.right.constValue() == null) {
-                      return ast.Const(node.pos, false);
-                    }
-                  };
-                  changeContextToHelpers = function (helperNames) {
-                    return function (node) {
-                      if (node instanceof ast.Binary && node.op === "." && node.left instanceof ast.Ident && node.left.name === "context" && node.right.isConst() && __in(node.right.constValue(), helperNames)) {
-                        return ast.Binary(
-                          node.pos,
-                          ast.Ident(node.left.pos, "helpers"),
-                          ".",
-                          node.right
-                        );
-                      }
-                    };
-                  };
-                  addHelpersToParams = function (node) {
-                    if (node instanceof ast.Func && node.params.length === 2 && node.params[0].name === "write" && node.params[1].name === "context") {
-                      return ast.Func(
-                        node.pos,
-                        node.name,
-                        [
-                          node.params[0],
-                          node.params[1],
-                          ast.Ident(node.pos, "helpers")
-                        ],
-                        node.variables,
-                        node.body,
-                        node.declarations
-                      );
-                    }
-                  };
-                  addFlushToGeneratorReturn = function (node) {
-                    var _ref, lastStatement, pos;
-                    if (node instanceof ast.Func && node.params.length === 3 && node.params[0].name === "write" && node.params[1].name === "context" && node.params[2].name === "helpers" && node.body instanceof ast.BlockStatement) {
-                      lastStatement = (_ref = node.body.body)[_ref.length - 1];
-                      if (lastStatement instanceof ast.Return && lastStatement.node instanceof ast.Obj) {
-                        pos = lastStatement.pos;
-                        return ast.Func(
-                          node.pos,
-                          node.name,
-                          node.params,
-                          node.variables,
-                          ast.BlockStatement(node.body.pos, __toArray(__slice.call(node.body.body, 0, -1)).concat([
-                            ast.Return(pos, ast.Obj(lastStatement.node.pos, __toArray(lastStatement.node.elements).concat([
-                              ast.Obj.Pair(pos, "flush", ast.Func(
-                                pos,
-                                null,
-                                [],
-                                ["flushed"],
-                                ast.Block(pos, [
-                                  ast.Assign(
-                                    pos,
-                                    ast.Ident(pos, "flushed"),
-                                    ast.Ident(pos, "write")
-                                  ),
-                                  ast.Assign(
-                                    pos,
-                                    ast.Ident(pos, "write"),
-                                    ast.Const(pos, "")
-                                  ),
-                                  ast.Return(pos, ast.Ident(pos, "flushed"))
-                                ])
-                              ))
-                            ])))
-                          ])),
-                          node.declarations
-                        );
-                      }
-                    }
-                  };
-                  ++_state;
-                  return {
-                    done: true,
-                    value: function (helperNames) {
-                      return function (root) {
-                        return root.walk(convertWriteCallToWrite).walk(convertWriteTrueToWriteEscape).walk(unwrapEscapeH).walk(mergeWrites).walk(removeWritesAfterExtends).walk(convertWriteToStringConcat).walk(convertLastWrite).walk(removeContextNullCheck).walk(changeContextToHelpers(helperNames)).walk(addHelpersToParams).walk(addFlushToGeneratorReturn);
-                      };
-                    }
-                  };
-                case 2:
-                  return { done: true, value: void 0 };
-                default: throw Error("Unknown state: " + _state);
+                      ])
+                  ]);
+                default: return;
                 }
               }
             }
-            function _throw(_e) {
-              _close();
-              throw _e;
+          }
+          function convertWriteTrueToWriteEscape(node) {
+            if (isCall(node, "write") && node.args.length === 2 && node.args[1].isConst() && node.args[1].constValue()) {
+              return ast.Call(node.pos, node.func, [
+                ast.Call(
+                  node.pos,
+                  ast.Access(
+                    node.pos,
+                    ast.Ident(node.pos, "context"),
+                    ast.Const(node.pos, "escape")
+                  ),
+                  [node.args[0]]
+                )
+              ]);
             }
-            function _send(_received) {
-              try {
-                return _step(_received);
-              } catch (_e) {
-                _throw(_e);
+          }
+          function unwrapEscapeH(node) {
+            var arg;
+            if (isContextCall(node, "escape") && node.args.length === 1) {
+              arg = node.args[0];
+              if (arg && (isContextCall(arg, "h") || isContextCall(arg, "html")) && arg.args.length === 1) {
+                return arg.args[0];
               }
             }
-            return {
-              close: _close,
-              iterator: function () {
-                return this;
-              },
-              next: function () {
-                return _send(void 0);
-              },
-              send: _send,
-              "throw": function (_e) {
-                _throw(_e);
-                return _send(void 0);
+          }
+          function canBeNumeric(node) {
+            var _ref;
+            if (node.isConst()) {
+              return typeof node.constValue() !== "string";
+            } else if (node instanceof ast.Binary) {
+              if (node.op === "+") {
+                return canBeNumeric(node.left) && canBeNumeric(node.right);
+              } else {
+                return true;
               }
-            };
-          }));
-          return __promise(function (helperNames) {
-            var _e, _send, _state, _step, _throw, getAstPipe;
-            _state = 0;
-            function _close() {
-              _state = 2;
+            } else if (node instanceof ast.IfExpression) {
+              return canBeNumeric(node.whenTrue) || canBeNumeric(node.whenFalse);
+            } else if (node instanceof ast.BlockExpression || node instanceof ast.BlockStatement) {
+              return canBeNumeric((_ref = node.body)[_ref.length - 1]);
+            } else {
+              return !isContextCall(node, "escape");
             }
-            function _step(_received) {
-              while (true) {
-                switch (_state) {
-                case 0:
-                  ++_state;
-                  return { done: false, value: makeGetAstPipe() };
-                case 1:
-                  getAstPipe = _received;
-                  ++_state;
-                  return { done: true, value: getAstPipe(helperNames) };
-                case 2:
-                  return { done: true, value: void 0 };
-                default: throw Error("Unknown state: " + _state);
+          }
+          function mergeWrites(node) {
+            var _arr, _len, body, changed, i, left, newSubnode, right, subnode,
+                whenFalse, whenTrue;
+            if (node instanceof ast.BlockExpression || node instanceof ast.BlockStatement) {
+              body = node.body.slice();
+              changed = false;
+              for (_arr = __toArray(body), i = 0, _len = _arr.length; i < _len; ++i) {
+                subnode = _arr[i];
+                newSubnode = subnode.walkWithThis(mergeWrites);
+                body[i] = newSubnode;
+                if (newSubnode !== subnode) {
+                  changed = true;
+                }
+              }
+              i = 0;
+              while (i < body.length - 1) {
+                left = body[i];
+                right = body[i + 1];
+                if (isCall(left, "write") && left.args.length === 1 && isCall(right, "write") && right.args.length === 1) {
+                  changed = true;
+                  body.splice(i, 2, ast.Call(left.pos, left.func, [
+                    ast.Binary(
+                      left.pos,
+                      canBeNumeric(left.args[0]) && canBeNumeric(right.args[0])
+                        ? ast.Binary(
+                          left.pos,
+                          ast.Const(left.pos, ""),
+                          "+",
+                          left.args[0]
+                        )
+                        : left.args[0],
+                      "+",
+                      right.args[0]
+                    )
+                  ]));
+                } else {
+                  ++i;
+                }
+              }
+              if (changed) {
+                return ast.Block(node.pos, body, node.label);
+              }
+            } else if ((node instanceof ast.IfStatement || node instanceof ast.IfExpression) && !node.label) {
+              whenTrue = node.whenTrue.walkWithThis(mergeWrites);
+              whenFalse = node.whenFalse.walkWithThis(mergeWrites);
+              if (isCall(whenTrue, "write") && (isCall(whenFalse, "write") || whenFalse.isNoop())) {
+                return ast.Call(node.pos, whenTrue.func, [
+                  ast.IfExpression(node.pos, node.test.walkWithThis(mergeWrites), whenTrue.args[0], whenFalse.isNoop() ? ast.Const(whenFalse.pos, "") : whenFalse.args[0])
+                ]);
+              }
+            }
+          }
+          function hasExtends(node) {
+            var FOUND;
+            FOUND = {};
+            try {
+              node.walk(function (subnode) {
+                if (subnode instanceof ast.Func) {
+                  return subnode;
+                } else if (isContextCall(subnode, "extends")) {
+                  throw FOUND;
+                }
+              });
+            } catch (e) {
+              if (e === FOUND) {
+                return true;
+              } else {
+                throw e;
+              }
+            }
+            return false;
+          }
+          function removeWritesInFunction(node) {
+            if (node instanceof ast.Func) {
+              return node;
+            } else if (isCall(node, "write")) {
+              return ast.Noop(node.pos);
+            }
+          }
+          function removeWritesAfterExtends(node) {
+            if (node instanceof ast.Func && hasExtends(node)) {
+              return node.walk(removeWritesInFunction);
+            }
+          }
+          function convertWriteToStringConcat(node) {
+            if (isCall(node, "write")) {
+              return ast.Binary(node.pos, node.func, "+=", node.args[0]).walk(convertWriteToStringConcat);
+            }
+          }
+          function prepend(left, node) {
+            if (node instanceof ast.Binary && node.op === "+") {
+              return ast.Binary(
+                left.pos,
+                prepend(left, node.left),
+                "+",
+                node.right
+              );
+            } else {
+              return ast.Binary(left.pos, left, "+", node);
+            }
+          }
+          function convertLastWrite(node) {
+            var _ref, beforeLast, last;
+            if (node instanceof ast.BlockStatement) {
+              last = (_ref = node.body)[_ref.length - 1];
+              if (last instanceof ast.Return && last.node instanceof ast.Ident && last.node.name === "write") {
+                beforeLast = (_ref = node.body)[_ref.length - 2];
+                if (beforeLast && beforeLast instanceof ast.Binary && beforeLast.op === "+=" && beforeLast.left instanceof ast.Ident && beforeLast.left.name === "write") {
+                  return ast.BlockStatement(
+                    node.pos,
+                    __toArray(__slice.call(node.body, 0, -2)).concat([
+                      ast.Return(beforeLast.pos, prepend(beforeLast.left, beforeLast.right))
+                    ]),
+                    node.label
+                  );
                 }
               }
             }
-            function _throw(_e) {
-              _close();
-              throw _e;
+          }
+          function removeContextNullCheck(node) {
+            if (node instanceof ast.Binary && node.op === "==" && node.left instanceof ast.Ident && node.left.name === "context" && node.right.isConst() && node.right.constValue() == null) {
+              return ast.Const(node.pos, false);
             }
-            function _send(_received) {
-              try {
-                return _step(_received);
-              } catch (_e) {
-                _throw(_e);
-              }
-            }
-            return {
-              close: _close,
-              iterator: function () {
-                return this;
-              },
-              next: function () {
-                return _send(void 0);
-              },
-              send: _send,
-              "throw": function (_e) {
-                _throw(_e);
-                return _send(void 0);
+          }
+          function changeContextToHelpers(helperNames) {
+            return function (node) {
+              if (node instanceof ast.Binary && node.op === "." && node.left instanceof ast.Ident && node.left.name === "context" && node.right.isConst() && __in(node.right.constValue(), helperNames)) {
+                return ast.Binary(
+                  node.pos,
+                  ast.Ident(node.left.pos, "helpers"),
+                  ".",
+                  node.right
+                );
               }
             };
-          });
+          }
+          function addHelpersToParams(node) {
+            if (node instanceof ast.Func && node.params.length === 2 && node.params[0].name === "write" && node.params[1].name === "context") {
+              return ast.Func(
+                node.pos,
+                node.name,
+                [
+                  node.params[0],
+                  node.params[1],
+                  ast.Ident(node.pos, "helpers")
+                ],
+                node.variables,
+                node.body,
+                node.declarations
+              );
+            }
+          }
+          function addFlushToGeneratorReturn(node) {
+            var _ref, lastStatement, pos;
+            if (node instanceof ast.Func && node.params.length === 3 && node.params[0].name === "write" && node.params[1].name === "context" && node.params[2].name === "helpers" && node.body instanceof ast.BlockStatement) {
+              lastStatement = (_ref = node.body.body)[_ref.length - 1];
+              if (lastStatement instanceof ast.Return && lastStatement.node instanceof ast.Obj) {
+                pos = lastStatement.pos;
+                return ast.Func(
+                  node.pos,
+                  node.name,
+                  node.params,
+                  node.variables,
+                  ast.BlockStatement(node.body.pos, __toArray(__slice.call(node.body.body, 0, -1)).concat([
+                    ast.Return(pos, ast.Obj(lastStatement.node.pos, __toArray(lastStatement.node.elements).concat([
+                      ast.Obj.Pair(pos, "flush", ast.Func(
+                        pos,
+                        null,
+                        [],
+                        ["flushed"],
+                        ast.Block(pos, [
+                          ast.Assign(
+                            pos,
+                            ast.Ident(pos, "flushed"),
+                            ast.Ident(pos, "write")
+                          ),
+                          ast.Assign(
+                            pos,
+                            ast.Ident(pos, "write"),
+                            ast.Const(pos, "")
+                          ),
+                          ast.Return(pos, ast.Ident(pos, "flushed"))
+                        ])
+                      ))
+                    ])))
+                  ])),
+                  node.declarations
+                );
+              }
+            }
+          }
+          return function (helperNames) {
+            return function (root) {
+              return root.walk(convertWriteCallToWrite).walk(convertWriteTrueToWriteEscape).walk(unwrapEscapeH).walk(mergeWrites).walk(removeWritesAfterExtends).walk(convertWriteToStringConcat).walk(convertLastWrite).walk(removeContextNullCheck).walk(changeContextToHelpers(helperNames)).walk(addHelpersToParams).walk(addFlushToGeneratorReturn);
+            };
+          };
         }());
         compileCode = __promise(function (egsCode, compileOptions, helperNames) {
           var _e, _err, _ref, _send, _state, _step, _throw, _tmp, astPipe, code,
-              gorillascript, isGenerator, macros, options;
+              isGenerator, macros, options;
           _state = 0;
           function _close() {
-            _state = 9;
+            _state = 7;
           }
           function _step(_received) {
             while (true) {
@@ -1073,10 +903,7 @@
                 return { done: false, value: getPreludeMacros(compileOptions.prelude) };
               case 1:
                 macros = _received;
-                ++_state;
-                return { done: false, value: getAstPipe(helperNames) };
-              case 2:
-                astPipe = _received;
+                astPipe = getAstPipe(helperNames);
                 _ref = __import({}, compileOptions);
                 _ref.embedded = true;
                 _ref.noindent = true;
@@ -1086,11 +913,20 @@
                 options = _ref;
                 isGenerator = false;
                 ++_state;
-                return { done: false, value: getGorillascript() };
-              case 3:
-                gorillascript = _received;
+              case 2:
                 ++_state;
+                return {
+                  done: false,
+                  value: gorillascript.compile(egsCode, options)
+                };
+              case 3:
+                _tmp = _received;
+                code = _tmp.code;
+                _state = 6;
+                break;
               case 4:
+                options.embeddedGenerator = true;
+                isGenerator = true;
                 ++_state;
                 return {
                   done: false,
@@ -1099,36 +935,23 @@
               case 5:
                 _tmp = _received;
                 code = _tmp.code;
-                _state = 8;
-                break;
+                ++_state;
               case 6:
-                options.embeddedGenerator = true;
-                isGenerator = true;
-                ++_state;
-                return {
-                  done: false,
-                  value: gorillascript.compile(egsCode, options)
-                };
-              case 7:
-                _tmp = _received;
-                code = _tmp.code;
-                ++_state;
-              case 8:
                 ++_state;
                 return {
                   done: true,
                   value: { isGenerator: isGenerator, code: code }
                 };
-              case 9:
+              case 7:
                 return { done: true, value: void 0 };
               default: throw Error("Unknown state: " + _state);
               }
             }
           }
           function _throw(_e) {
-            if (_state === 4 || _state === 5) {
+            if (_state === 2 || _state === 3) {
               _err = _e;
-              _state = 6;
+              _state = 4;
             } else {
               _close();
               throw _e;
@@ -1566,629 +1389,6 @@
             uglify: options.uglify
           };
         }
-        function toMaybeSync(promiseFactory) {
-          var k, maybeSync, v;
-          maybeSync = promiseFactory.maybeSync;
-          for (k in promiseFactory) {
-            if (__owns.call(promiseFactory, k)) {
-              v = promiseFactory[k];
-              maybeSync[k] = v;
-            }
-          }
-          return maybeSync;
-        }
-        function flushStream(streamSend, write) {
-          if (write && streamSend) {
-            streamSend(write);
-            return "";
-          } else {
-            return write;
-          }
-        }
-        simpleHelpersProto = __import({}, helpers);
-        _ref = __import({}, helpers);
-        _ref["extends"] = function (name, locals) {
-          if (!this.__currentFilepath$) {
-            throw EgsError("Can only use extends if the 'filename' option is specified");
-          }
-          if (this.__inPartial$) {
-            throw EgsError("Cannot use extends when in a partial");
-          }
-          if (this.__extendedBy$) {
-            throw EgsError("Cannot use extends more than once");
-          }
-          this.__extendedBy$ = this.__fetchCompiled$(name);
-          this.__extendedByLocals$ = locals;
-        };
-        _ref.partial = toMaybeSync(__promise(function (name, write, locals) {
-          var _e, _o, _ref, _send, _state, _step, _this, _throw, filepath, func,
-              partialHelpers;
-          _this = this;
-          _state = 0;
-          function _close() {
-            _state = 5;
-          }
-          function _step(_received) {
-            while (true) {
-              switch (_state) {
-              case 0:
-                if (locals == null) {
-                  locals = {};
-                }
-                if (!_this.__currentFilepath$) {
-                  throw EgsError("Can only use partial if the 'filename' option is specified");
-                }
-                name = path.join(path.dirname(name), "" + _this.__partialPrefix$ + path.basename(name));
-                write = flushStream(_this.__streamSend$, write);
-                ++_state;
-                return { done: false, value: _this.__fetchCompiled$(name) };
-              case 1:
-                _ref = _received;
-                filepath = _ref.filepath;
-                func = _ref.compiled.func;
-                _o = __create(_this);
-                _o.__currentFilepath$ = filepath;
-                _o.__inPartial$ = true;
-                partialHelpers = _o;
-                _state = func.maybeSync ? 2 : 4;
-                break;
-              case 2:
-                ++_state;
-                return {
-                  done: false,
-                  value: func.maybeSync(write, locals, partialHelpers)
-                };
-              case 3:
-                _state = 5;
-                return { done: true, value: _received };
-              case 4:
-                ++_state;
-                return {
-                  done: true,
-                  value: func(write, locals, partialHelpers)
-                };
-              case 5:
-                return { done: true, value: void 0 };
-              default: throw Error("Unknown state: " + _state);
-              }
-            }
-          }
-          function _throw(_e) {
-            _close();
-            throw _e;
-          }
-          function _send(_received) {
-            try {
-              return _step(_received);
-            } catch (_e) {
-              _throw(_e);
-            }
-          }
-          return {
-            close: _close,
-            iterator: function () {
-              return this;
-            },
-            next: function () {
-              return _send(void 0);
-            },
-            send: _send,
-            "throw": function (_e) {
-              _throw(_e);
-              return _send(void 0);
-            }
-          };
-        }));
-        _ref.block = toMaybeSync(__promise(function (name, write, inside) {
-          var _e, _send, _state, _step, _this, _throw, block, blocks, result,
-              rootHelpers;
-          _this = this;
-          _state = 0;
-          function _close() {
-            _state = 6;
-          }
-          function _step(_received) {
-            while (true) {
-              switch (_state) {
-              case 0:
-                if (inside == null) {
-                  inside = null;
-                }
-                if (_this.__inPartial$) {
-                  throw EgsError("Cannot use block when in a partial");
-                }
-                write = flushStream(_this.__streamSend$, write);
-                blocks = _this.__blocks$;
-                rootHelpers = _this.__helpers$;
-                _state = _this.__extendedBy$ && !rootHelpers.__inBlock$ ? 1 : 2;
-                break;
-              case 1:
-                if (inside != null && !__owns.call(blocks, name)) {
-                  blocks[name] = inside;
-                }
-                _state = 6;
-                return { done: true, value: write };
-              case 2:
-                block = __owns.call(blocks, name) && blocks[name] || inside;
-                result = write;
-                _state = block ? 3 : 5;
-                break;
-              case 3:
-                rootHelpers.__inBlock$ = true;
-                ++_state;
-                return {
-                  done: false,
-                  value: __promise(block(write), true)
-                };
-              case 4:
-                result = _received;
-                rootHelpers.__inBlock$ = false;
-                ++_state;
-              case 5:
-                ++_state;
-                return { done: true, value: result };
-              case 6:
-                return { done: true, value: void 0 };
-              default: throw Error("Unknown state: " + _state);
-              }
-            }
-          }
-          function _throw(_e) {
-            _close();
-            throw _e;
-          }
-          function _send(_received) {
-            try {
-              return _step(_received);
-            } catch (_e) {
-              _throw(_e);
-            }
-          }
-          return {
-            close: _close,
-            iterator: function () {
-              return this;
-            },
-            next: function () {
-              return _send(void 0);
-            },
-            send: _send,
-            "throw": function (_e) {
-              _throw(_e);
-              return _send(void 0);
-            }
-          };
-        }));
-        _ref.__handleExtends$ = toMaybeSync(__promise(function (currentWrite) {
-          var _e, _o, _ref, _send, _state, _step, _this, _throw, filepath, func,
-              locals, newHelpers, text;
-          _this = this;
-          _state = 0;
-          function _close() {
-            _state = 9;
-          }
-          function _step(_received) {
-            while (true) {
-              switch (_state) {
-              case 0:
-                ++_state;
-                return { done: false, value: _this.__extendedBy$ };
-              case 1:
-                _ref = _received;
-                filepath = _ref.filepath;
-                func = _ref.compiled.func;
-                _o = __create(_this);
-                _o.__currentFilepath$ = filepath;
-                _o.__extendedBy$ = null;
-                _o.__extendedByLocals$ = null;
-                newHelpers = _o;
-                locals = _this.__extendedByLocals$ || {};
-                _state = func.maybeSync ? 2 : 4;
-                break;
-              case 2:
-                ++_state;
-                return {
-                  done: false,
-                  value: func.maybeSync("", locals, newHelpers)
-                };
-              case 3:
-                text = _received;
-                _state = 5;
-                break;
-              case 4:
-                text = func("", locals, newHelpers);
-                ++_state;
-              case 5:
-                _state = newHelpers.__extendedBy$ ? 6 : 8;
-                break;
-              case 6:
-                ++_state;
-                return {
-                  done: false,
-                  value: newHelpers.__handleExtends$.call(newHelpers, text)
-                };
-              case 7:
-                _state = 9;
-                return { done: true, value: _received };
-              case 8:
-                ++_state;
-                return { done: true, value: text };
-              case 9:
-                return { done: true, value: void 0 };
-              default: throw Error("Unknown state: " + _state);
-              }
-            }
-          }
-          function _throw(_e) {
-            _close();
-            throw _e;
-          }
-          function _send(_received) {
-            try {
-              return _step(_received);
-            } catch (_e) {
-              _throw(_e);
-            }
-          }
-          return {
-            close: _close,
-            iterator: function () {
-              return this;
-            },
-            next: function () {
-              return _send(void 0);
-            },
-            send: _send,
-            "throw": function (_e) {
-              _throw(_e);
-              return _send(void 0);
-            }
-          };
-        }));
-        helpersProto = _ref;
-        makeHelpersFactory = (function () {
-          function makeFactory(partialPrefix, currentFilepath, fetchCompiled, escaper, optionsContext) {
-            var baseHelpers, simpleHelpers;
-            baseHelpers = __create(helpersProto);
-            baseHelpers.__currentFilepath$ = currentFilepath;
-            baseHelpers.__partialPrefix$ = partialPrefix;
-            baseHelpers.__fetchCompiled$ = fetchCompiled;
-            baseHelpers.__extendedBy$ = null;
-            baseHelpers.__extendedByLocals$ = null;
-            baseHelpers.__inPartial$ = false;
-            baseHelpers.__inBlock$ = false;
-            baseHelpers.escape = escaper;
-            simpleHelpers = __create(simpleHelpersProto);
-            simpleHelpers.__currentFilepath$ = currentFilepath;
-            simpleHelpers.escape = escaper;
-            if (optionsContext) {
-              __import(simpleHelpers, optionsContext);
-              __import(baseHelpers, optionsContext);
-            }
-            return function (isSimple) {
-              var helpers;
-              if (isSimple) {
-                return simpleHelpers;
-              } else {
-                helpers = __create(baseHelpers);
-                helpers.__helpers$ = helpers;
-                helpers.__blocks$ = {};
-                return helpers;
-              }
-            };
-          }
-          return function (options, helperNames) {
-            return makeFactory(
-              typeof options.partialPrefix === "string" ? options.partialPrefix : "_",
-              options.filename,
-              (function () {
-                var compileOptions, inPackage;
-                inPackage = options.__inPackage$;
-                if (inPackage) {
-                  return function (name) {
-                    return inPackage._find(name, this.__currentFilepath$);
-                  };
-                } else {
-                  compileOptions = getCompileOptions(options);
-                  return function (name) {
-                    return findAndCompileFile(name, this.__currentFilepath$, compileOptions, helperNames);
-                  };
-                }
-              }()),
-              typeof options.escape === "function" ? options.escape : utils.escapeHTML,
-              __owns.call(options, "context") ? options.context : options
-            );
-          };
-        }());
-        function makeTemplate(getCompilationP, makeHelpers, cacheCompilation) {
-          var compilation, template;
-          if (cacheCompilation == null) {
-            cacheCompilation = false;
-          }
-          template = __promise(function (data) {
-            var _e, _send, _state, _step, _throw, helpers, result, tmp;
-            _state = 0;
-            function _close() {
-              _state = 10;
-            }
-            function _step(_received) {
-              while (true) {
-                switch (_state) {
-                case 0:
-                  tmp = cacheCompilation && compilation;
-                  _state = !tmp ? 1 : 3;
-                  break;
-                case 1:
-                  ++_state;
-                  return { done: false, value: getCompilationP() };
-                case 2:
-                  tmp = _received;
-                  if (cacheCompilation) {
-                    compilation = tmp;
-                  }
-                  ++_state;
-                case 3:
-                  helpers = makeHelpers(tmp.isSimple);
-                  result = tmp.func("", data || {}, helpers);
-                  _state = result && result.then ? 4 : 6;
-                  break;
-                case 4:
-                  ++_state;
-                  return { done: false, value: result };
-                case 5:
-                  result = _received;
-                  ++_state;
-                case 6:
-                  _state = helpers.__extendedBy$ ? 7 : 9;
-                  break;
-                case 7:
-                  ++_state;
-                  return {
-                    done: false,
-                    value: helpers.__handleExtends$.maybeSync.call(helpers, result)
-                  };
-                case 8:
-                  _state = 10;
-                  return { done: true, value: _received };
-                case 9:
-                  ++_state;
-                  return { done: true, value: result };
-                case 10:
-                  return { done: true, value: void 0 };
-                default: throw Error("Unknown state: " + _state);
-                }
-              }
-            }
-            function _throw(_e) {
-              _close();
-              throw _e;
-            }
-            function _send(_received) {
-              try {
-                return _step(_received);
-              } catch (_e) {
-                _throw(_e);
-              }
-            }
-            return {
-              close: _close,
-              iterator: function () {
-                return this;
-              },
-              next: function () {
-                return _send(void 0);
-              },
-              send: _send,
-              "throw": function (_e) {
-                _throw(_e);
-                return _send(void 0);
-              }
-            };
-          });
-          template.sync = function (data) {
-            var func, helpers, result, tmp;
-            tmp = cacheCompilation && compilation;
-            if (!tmp) {
-              tmp = getCompilationP().sync();
-              if (cacheCompilation) {
-                compilation = tmp;
-              }
-            }
-            helpers = makeHelpers(tmp.isSimple);
-            func = tmp.func;
-            result = (func.sync || func)("", data || {}, helpers);
-            if (typeof result !== "string") {
-              result = result.sync();
-            }
-            if (helpers.__extendedBy$) {
-              return helpers.__handleExtends$.sync.call(helpers, result);
-            } else {
-              return result;
-            }
-          };
-          template.stream = function (data) {
-            var _ref, promise, streamEnd, streamPublic, streamSend, streamThrow;
-            _ref = Stream();
-            streamSend = _ref.send;
-            streamEnd = _ref.end;
-            streamThrow = _ref["throw"];
-            streamPublic = _ref["public"];
-            promise = __generatorToPromise((function () {
-              var _e, _send, _state, _step, _throw, extension, func, helpers, result,
-                  tmp;
-              _state = 0;
-              function _close() {
-                _state = 11;
-              }
-              function _step(_received) {
-                while (true) {
-                  switch (_state) {
-                  case 0:
-                    tmp = cacheCompilation && compilation;
-                    _state = !tmp ? 1 : 3;
-                    break;
-                  case 1:
-                    ++_state;
-                    return { done: false, value: getCompilationP() };
-                  case 2:
-                    tmp = _received;
-                    if (cacheCompilation) {
-                      compilation = tmp;
-                    }
-                    ++_state;
-                  case 3:
-                    helpers = makeHelpers(tmp.isSimple);
-                    helpers.__streamSend$ = streamSend;
-                    ++_state;
-                    return { done: false, value: __defer.fulfilled() };
-                  case 4:
-                    func = tmp.func;
-                    if (func.stream) {
-                      result = func.stream(streamSend, "", data || {}, helpers);
-                    } else {
-                      result = func("", data || {}, helpers);
-                    }
-                    _state = result && result.then ? 5 : 7;
-                    break;
-                  case 5:
-                    ++_state;
-                    return { done: false, value: result };
-                  case 6:
-                    result = _received;
-                    ++_state;
-                  case 7:
-                    _state = helpers.__extendedBy$ ? 8 : 10;
-                    break;
-                  case 8:
-                    extension = helpers.__handleExtends$;
-                    ++_state;
-                    return {
-                      done: false,
-                      value: extension.call(helpers, result)
-                    };
-                  case 9:
-                    _state = 11;
-                    return { done: true, value: _received };
-                  case 10:
-                    ++_state;
-                    return { done: true, value: result };
-                  case 11:
-                    return { done: true, value: void 0 };
-                  default: throw Error("Unknown state: " + _state);
-                  }
-                }
-              }
-              function _throw(_e) {
-                _close();
-                throw _e;
-              }
-              function _send(_received) {
-                try {
-                  return _step(_received);
-                } catch (_e) {
-                  _throw(_e);
-                }
-              }
-              return {
-                close: _close,
-                iterator: function () {
-                  return this;
-                },
-                next: function () {
-                  return _send(void 0);
-                },
-                send: _send,
-                "throw": function (_e) {
-                  _throw(_e);
-                  return _send(void 0);
-                }
-              };
-            }()));
-            promise.then(function (value) {
-              if (value) {
-                streamSend(value);
-              }
-              streamEnd();
-            }).then(null, streamThrow);
-            return streamPublic;
-          };
-          template.ready = __promise(function () {
-            var _e, _send, _state, _step, _throw, func, helpers;
-            _state = 0;
-            function _close() {
-              _state = 6;
-            }
-            function _step(_received) {
-              while (true) {
-                switch (_state) {
-                case 0:
-                  _state = cacheCompilation ? 1 : 5;
-                  break;
-                case 1:
-                  _state = !compilation ? 2 : 4;
-                  break;
-                case 2:
-                  ++_state;
-                  return { done: false, value: getCompilationP() };
-                case 3:
-                  compilation = _received;
-                  ++_state;
-                case 4:
-                  func = compilation.func;
-                  if (func.sync) {
-                    func = func.sync;
-                  }
-                  if (compilation.isSimple) {
-                    helpers = makeHelpers(true);
-                    template.sync = function (data) {
-                      var result;
-                      result = func("", data || {}, helpers);
-                      if (typeof result !== "string") {
-                        return result.sync();
-                      } else {
-                        return result;
-                      }
-                    };
-                  }
-                  _state = 6;
-                  break;
-                case 5:
-                  ++_state;
-                  return { done: false, value: getCompilationP() };
-                case 6:
-                  return { done: true, value: void 0 };
-                default: throw Error("Unknown state: " + _state);
-                }
-              }
-            }
-            function _throw(_e) {
-              _close();
-              throw _e;
-            }
-            function _send(_received) {
-              try {
-                return _step(_received);
-              } catch (_e) {
-                _throw(_e);
-              }
-            }
-            return {
-              close: _close,
-              iterator: function () {
-                return this;
-              },
-              next: function () {
-                return _send(void 0);
-              },
-              send: _send,
-              "throw": function (_e) {
-                _throw(_e);
-                return _send(void 0);
-              }
-            };
-          });
-          return template;
-        }
         function siftOptions(options) {
           return {
             filename: options.filename,
@@ -2214,12 +1414,7 @@
           } else {
             context = options;
           }
-          result = ["escape", "extends", "partial", "block"];
-          for (k in helpers) {
-            if (__owns.call(helpers, k) && !__in(k, result)) {
-              result.push(k);
-            }
-          }
+          result = ["escape", "extends", "partial", "block"].concat(__toArray(standardHelperNames));
           if (context) {
             for (k in context) {
               if (__owns.call(context, k) && !__in(k, result)) {
@@ -2229,30 +1424,37 @@
           }
           return result.sort();
         }
-        function compileTemplate(egsCode, options) {
-          var helperNames;
+        function compileTemplateFromTextOrFile(isFilepath, egsCodeOrFilepath, options) {
+          var compileOptions, helperNames;
+          if (isFilepath == null) {
+            isFilepath = false;
+          }
           if (options == null) {
             options = { context: null };
           }
           helperNames = getHelperNames(options);
+          compileOptions = getCompileOptions(options);
           return makeTemplate(
-            returnSame(compile(egsCode, getCompileOptions(options), helperNames)),
-            makeHelpersFactory(options, helperNames),
-            true
+            isFilepath ? compileFile(egsCodeOrFilepath, compileOptions, helperNames)
+              : returnSame(compile(egsCodeOrFilepath, compileOptions, helperNames)),
+            makeHelpersFactory(options, function (name, currentFilepath) {
+              return findAndCompileFile(name, currentFilepath, compileOptions, helperNames);
+            }),
+            isFilepath ? options.cache : true
           );
         }
+        function compileTemplate(egsCode, options) {
+          if (options == null) {
+            options = { context: null };
+          }
+          return compileTemplateFromTextOrFile(false, egsCode, options);
+        }
         function compileTemplateFromFile(filepath, options) {
-          var helperNames;
           if (options == null) {
             options = { context: null };
           }
           options.filename = filepath;
-          helperNames = getHelperNames(options);
-          return makeTemplate(
-            compileFile(filepath, getCompileOptions(options), helperNames),
-            makeHelpersFactory(options, helperNames),
-            options.cache
-          );
+          return compileTemplateFromTextOrFile(true, filepath, options);
         }
         render = __promise(function (egsCode, options, context) {
           var _e, _send, _state, _step, _throw, template;
@@ -2541,10 +1743,10 @@
         });
         compilePackage = __promise(function (inputDirpath, outputFilepath, options) {
           var _e, _send, _state, _step, _throw, astPipe, dirstat, fullAstPipe,
-              gorillascript, inputFilepaths, macros;
+              inputFilepaths, macros;
           _state = 0;
           function _close() {
-            _state = 7;
+            _state = 5;
           }
           function _step(_received) {
             while (true) {
@@ -2571,17 +1773,10 @@
               case 2:
                 inputFilepaths = _received;
                 ++_state;
-                return { done: false, value: getGorillascript() };
-              case 3:
-                gorillascript = _received;
-                ++_state;
                 return { done: false, value: getPreludeMacros(options.prelude) };
-              case 4:
+              case 3:
                 macros = _received;
-                ++_state;
-                return { done: false, value: getAstPipe(getHelperNames({})) };
-              case 5:
-                astPipe = _received;
+                astPipe = getAstPipe(getHelperNames({}));
                 fullAstPipe = function (root, _p, ast) {
                   var filesAssigned;
                   filesAssigned = {};
@@ -2673,7 +1868,7 @@
                                 root.pos,
                                 ast.Ident(root.pos, "define"),
                                 [
-                                  ast.Arr(root.pos, [ast.Const(root.pos, "egs")]),
+                                  ast.Arr(root.pos, [ast.Const(root.pos, "egs-runtime")]),
                                   ast.Ident(root.pos, "factory")
                                 ]
                               ),
@@ -2684,7 +1879,7 @@
                                   root.pos,
                                   ast.Ident(root.pos, "factory"),
                                   [
-                                    ast.Access(root.pos, ast.This(root.pos), ast.Const(root.pos, "EGS"))
+                                    ast.Access(root.pos, ast.This(root.pos), ast.Const(root.pos, "EGSRuntime"))
                                   ]
                                 )
                               )
@@ -2698,16 +1893,16 @@
                         ast.Func(
                           root.pos,
                           null,
-                          [ast.Ident(root.pos, "EGS")],
+                          [ast.Ident(root.pos, "EGSRuntime")],
                           ["templates"],
                           ast.Block(root.pos, [
                             ast.IfStatement(
                               root.pos,
-                              ast.Unary(root.pos, "!", ast.Ident(root.pos, "EGS")),
+                              ast.Unary(root.pos, "!", ast.Ident(root.pos, "EGSRuntime")),
                               ast.Throw(root.pos, ast.Call(
                                 root.pos,
                                 ast.Ident(root.pos, "Error"),
-                                [ast.Const(root.pos, "Expected EGS to be available")]
+                                [ast.Const(root.pos, "Expected EGSRuntime to be available")]
                               ))
                             ),
                             ast.Assign(
@@ -2717,7 +1912,7 @@
                                 root.pos,
                                 ast.Access(
                                   root.pos,
-                                  ast.Ident(root.pos, "EGS"),
+                                  ast.Ident(root.pos, "EGSRuntime"),
                                   ast.Const(root.pos, "Package")
                                 ),
                                 []
@@ -2760,10 +1955,10 @@
                     astPipe: fullAstPipe
                   })
                 };
-              case 6:
+              case 4:
                 ++_state;
                 return { done: true, value: _received };
-              case 7:
+              case 5:
                 return { done: true, value: void 0 };
               default: throw Error("Unknown state: " + _state);
               }
@@ -2795,188 +1990,7 @@
             }
           };
         });
-        Package = (function () {
-          var _Package_prototype;
-          function Package(options) {
-            var _this;
-            _this = this instanceof Package ? this : __create(_Package_prototype);
-            if (options == null) {
-              options = {};
-            }
-            _this.options = options;
-            _this.factories = {};
-            _this.templates = {};
-            return _this;
-          }
-          _Package_prototype = Package.prototype;
-          Package.displayName = "Package";
-          function withLeadingSlash(filepath) {
-            if (filepath.charCodeAt(0) !== 47) {
-              return "/" + filepath;
-            } else {
-              return filepath;
-            }
-          }
-          _Package_prototype.set = function (filepath, generator, options) {
-            var factory;
-            if (options == null) {
-              options = {};
-            }
-            filepath = withLeadingSlash(filepath);
-            factory = this.factories[filepath] = __promise(generator);
-            this.templates[filepath] = makeTemplate(
-              returnSame(__defer.fulfilled({ func: factory, isSimple: false })),
-              makeHelpersFactory(__import(
-                __import(
-                  { __inPackage$: this, filename: filepath },
-                  this.options
-                ),
-                options
-              )),
-              true
-            );
-            return this;
-          };
-          _Package_prototype.get = function (filepath) {
-            var templates;
-            filepath = withLeadingSlash(filepath);
-            templates = this.templates;
-            if (!__owns.call(templates, filepath)) {
-              throw EgsError("Unknown filepath: '" + filepath + "'");
-            } else {
-              return templates[filepath];
-            }
-          };
-          _Package_prototype.render = __promise(function (filepath, data) {
-            var _e, _send, _state, _step, _this, _throw, template;
-            _this = this;
-            _state = 0;
-            function _close() {
-              _state = 2;
-            }
-            function _step(_received) {
-              while (true) {
-                switch (_state) {
-                case 0:
-                  if (data == null) {
-                    data = {};
-                  }
-                  template = _this.get(filepath);
-                  ++_state;
-                  return { done: false, value: template(data) };
-                case 1:
-                  ++_state;
-                  return { done: true, value: _received };
-                case 2:
-                  return { done: true, value: void 0 };
-                default: throw Error("Unknown state: " + _state);
-                }
-              }
-            }
-            function _throw(_e) {
-              _close();
-              throw _e;
-            }
-            function _send(_received) {
-              try {
-                return _step(_received);
-              } catch (_e) {
-                _throw(_e);
-              }
-            }
-            return {
-              close: _close,
-              iterator: function () {
-                return this;
-              },
-              next: function () {
-                return _send(void 0);
-              },
-              send: _send,
-              "throw": function (_e) {
-                _throw(_e);
-                return _send(void 0);
-              }
-            };
-          });
-          _Package_prototype.renderSync = function (filepath, data) {
-            var template;
-            if (data == null) {
-              data = {};
-            }
-            template = this.get(filepath);
-            return template.sync(data);
-          };
-          _Package_prototype.renderStream = function (filepath, data) {
-            var template;
-            if (data == null) {
-              data = {};
-            }
-            template = this.get(filepath);
-            return template.stream(data);
-          };
-          _Package_prototype._find = function (name, fromFilepath) {
-            var factories, filepath;
-            filepath = guessFilepath(name, fromFilepath);
-            factories = this.factories;
-            if (!__owns.call(factories, filepath)) {
-              return __defer.rejected(EgsError("Cannot find '" + name + "' from '" + filepath + "', tried '" + filepath + "'"));
-            } else {
-              return __defer.fulfilled({
-                filepath: filepath,
-                compiled: { func: factories[filepath], isSimple: false }
-              });
-            }
-          };
-          _Package_prototype.express = function () {
-            var _this;
-            _this = this;
-            return function (path, data, callback) {
-              __fromPromise(_this.render(path, data))(callback);
-            };
-          };
-          return Package;
-        }());
-        function Stream() {
-          var events;
-          events = {};
-          function complete(type, value) {
-            var event;
-            if (events) {
-              event = events[type];
-              events = null;
-              if (event) {
-                setImmediate(event, value);
-              }
-            }
-          }
-          return {
-            send: function (value) {
-              var event;
-              if (events) {
-                event = events.data;
-                if (event) {
-                  event(value);
-                }
-              }
-            },
-            "throw": function (err) {
-              complete("error", err);
-            },
-            end: function () {
-              complete("end");
-            },
-            "public": {
-              on: function (type, callback) {
-                if (events) {
-                  events[type] = callback;
-                }
-                return this;
-              }
-            }
-          };
-        }
-        compileTemplate.version = "0.1.10";
+        compileTemplate.version = "0.2.0";
         compileTemplate.fromFile = compileTemplateFromFile;
         compileTemplate.render = render;
         compileTemplate.renderFile = renderFile;
@@ -2985,7 +1999,7 @@
         compileTemplate.withEgsPrelude = withEgsPrelude;
         compileTemplate.compilePackage = compilePackage;
         compileTemplate.Package = Package;
-        compileTemplate.EgsError = EgsError;
+        compileTemplate.EGSError = EGSError;
         compileTemplate.compile = function (egsCode, options, helperNames) {
           if (egsCode == null) {
             egsCode = "";
@@ -3022,155 +2036,15 @@
       
       return module.exports;
     };
-    require['./helpers'] = function () {
-      var module = { exports: this };
-      var exports = this;
-      (function () {
-        "use strict";
-        var __create, __isArray, __typeof, RawHTML;
-        __create = typeof Object.create === "function" ? Object.create
-          : function (x) {
-            function F() {}
-            F.prototype = x;
-            return new F();
-          };
-        __isArray = typeof Array.isArray === "function" ? Array.isArray
-          : (function () {
-            var _toString;
-            _toString = Object.prototype.toString;
-            return function (x) {
-              return _toString.call(x) === "[object Array]";
-            };
-          }());
-        __typeof = (function () {
-          var _toString;
-          _toString = Object.prototype.toString;
-          return function (o) {
-            if (o === void 0) {
-              return "Undefined";
-            } else if (o === null) {
-              return "Null";
-            } else {
-              return o.constructor && o.constructor.name || _toString.call(o).slice(8, -1);
-            }
-          };
-        }());
-        RawHTML = (function () {
-          var _RawHTML_prototype;
-          function RawHTML(text) {
-            var _this;
-            _this = this instanceof RawHTML ? this : __create(_RawHTML_prototype);
-            _this.text = text;
-            return _this;
-          }
-          _RawHTML_prototype = RawHTML.prototype;
-          RawHTML.displayName = "RawHTML";
-          _RawHTML_prototype.toHTML = function () {
-            return this.text;
-          };
-          return RawHTML;
-        }());
-        exports.h = exports.html = function (text) {
-          return RawHTML(String(text));
-        };
-        exports.j = exports.javascript = (function () {
-          var escapes, regex;
-          escapes = {
-            "\\": "\\\\",
-            "\r": "\\r",
-            "\u2028": "\\u2028",
-            "\u2029": "\\u2029",
-            "\n": "\\n",
-            "\f": "\\f",
-            "'": "\\'",
-            '"': '\\"',
-            "\t": "\\t"
-          };
-          function replacer(x) {
-            return escapes[x];
-          }
-          regex = /[\\\r\u2028\u2029\n\f'"\t]/g;
-          return function (text) {
-            return RawHTML(String(text).replace(regex, replacer));
-          };
-        }());
-        exports.__maybeEscape = function (escape, arr) {
-          if (typeof escape !== "function") {
-            throw TypeError("Expected escape to be a Function, got " + __typeof(escape));
-          }
-          if (!__isArray(arr)) {
-            throw TypeError("Expected arr to be an Array, got " + __typeof(arr));
-          }
-          if (arr[1]) {
-            return escape(arr[0]);
-          } else {
-            return arr[0];
-          }
-        };
-      }.call(this));
-      
-      return module.exports;
-    };
-    require['./utils'] = function () {
-      var module = { exports: this };
-      var exports = this;
-      (function () {
-        "use strict";
-        var __typeof;
-        __typeof = (function () {
-          var _toString;
-          _toString = Object.prototype.toString;
-          return function (o) {
-            if (o === void 0) {
-              return "Undefined";
-            } else if (o === null) {
-              return "Null";
-            } else {
-              return o.constructor && o.constructor.name || _toString.call(o).slice(8, -1);
-            }
-          };
-        }());
-        exports.escapeHTML = (function () {
-          var escapes, regex;
-          escapes = {
-            "&": "&amp;",
-            "<": "&lt;",
-            ">": "&gt;",
-            '"': "&quot;",
-            "'": "&#39;"
-          };
-          function replacer(x) {
-            return escapes[x];
-          }
-          regex = /[&<>"']/g;
-          function escaper(text) {
-            return text.replace(regex, replacer);
-          }
-          return function (value) {
-            if (typeof value === "string") {
-              return escaper(value);
-            } else if (typeof value === "number") {
-              return value.toString();
-            } else if (value != null && typeof value.toHTML === "function") {
-              return String(value.toHTML());
-            } else {
-              throw TypeError("Expected a String, Number, or Object with a toHTML method, got " + __typeof(value));
-            }
-          };
-        }());
-      }.call(this));
-      
-      return module.exports;
-    };
 
     return require("./egs").withEgsPrelude("macro extends(name, locals)\n  let new-context = if locals and not locals.is-const()\n    ASTE {} <<< context <<< $locals\n  else\n    ASTE context\n  ASTE context.extends $name, $new-context\n\nmacro block\n  syntax ident as Identifier, body as GeneratorBody?\n    let name = @const @name(ident)\n    if body?\n      ASTE! write := yield context.block $name, first!(write, (write := '')), #(write)*\n        $body\n        write\n    else\n      ASTE! write := yield context.block $name, first!(write, (write := ''))\n\nmacro partial(name, locals)\n  let new-context = if locals and not locals.is-const()\n    ASTE {} <<< context <<< $locals\n  else\n    ASTE context\n  ASTE! write := yield context.partial $name, first!(write, (write := '')), $new-context\n");
   };
 
   if (typeof define === "function" && define.amd) {
-    define(function (require) { return EGS(require); });
+    define(["require","gorillascript","egs-runtime"], function (require) { return _EGS(require); });
   } else if (typeof module !== "undefined" && typeof require === "function") {
-    module.exports = EGS(require);
+    module.exports = _EGS(require);
   } else {
-    root.EGS = EGS();
+    root.EGS = _EGS();
   }
 }(this));

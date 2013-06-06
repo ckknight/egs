@@ -136,7 +136,7 @@ describe "from a string", #
       """
       
       expect(template())
-        .to.be.rejected.with egs.EgsError
+        .to.be.rejected.with egs.EGSError
     
     it "fails if attempting to use partial", #
       let template = egs """
@@ -144,7 +144,7 @@ describe "from a string", #
       """
       
       expect(template())
-        .to.be.rejected.with egs.EgsError
+        .to.be.rejected.with egs.EGSError
     
     it "does not add two numbers that are next to each other", #
       let template = egs """

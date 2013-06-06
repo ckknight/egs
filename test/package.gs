@@ -1,4 +1,4 @@
-let egs = require '../index'
+let egs-runtime = require if process.env.EGS_COV then '../lib-cov/runtime' else '../lib/runtime'
 let {expect} = require 'chai'
 let {stub} = require 'sinon'
 require! os
@@ -7,7 +7,7 @@ require! path
 
 describe "package", #
   it "should be able to set and render text", #
-    let templates = egs.Package()
+    let templates = egs-runtime.Package()
     templates.set "hello.egs", #(write, context, helpers)*
       "$(write)Hello, $(helpers.escape context.name)!"
     
@@ -22,7 +22,7 @@ describe "package", #
     every-promise! promises
   
   it "should be able to reference another file as a partial", #
-    let templates = egs.Package()
+    let templates = egs-runtime.Package()
     templates.set "_hello.egs", #(write, context, helpers)*
       "$(write)Hello, $(helpers.escape context.name)!"
     
@@ -42,7 +42,7 @@ describe "package", #
     every-promise! promises
   
   it "should be able to stream a render", #(cb)
-    let templates = egs.Package()
+    let templates = egs-runtime.Package()
     templates.set "_hello.egs", #(write, context, helpers)*
       "$(write)Hello, $(helpers.escape context.name)!"
     
@@ -62,7 +62,7 @@ describe "package", #
         cb()
   
   it "should be able to reference another file as a partial without extensions", #
-    let templates = egs.Package()
+    let templates = egs-runtime.Package()
     templates.set "_hello", #(write, context, helpers)*
       "$(write)Hello, $(helpers.escape context.name)!"
     
@@ -75,7 +75,7 @@ describe "package", #
       .to.eventually.equal "[Hello, world!]"
   
   it "should be able to reference another file as a layout", #
-    let templates = egs.Package()
+    let templates = egs-runtime.Package()
     templates.set "layout.egs", #(mutable write, context, helpers)*
       write &= "["
       write := yield helpers.block "start", write
@@ -93,7 +93,7 @@ describe "package", #
       .to.eventually.equal "[Hello!]"
   
   it "fails if attempting to extend two layouts", #
-    let templates = egs.Package()
+    let templates = egs-runtime.Package()
     templates.set "layout.egs", #(mutable write, context, helpers)*
       write &= "["
       write := yield helpers.block "start", write
@@ -112,28 +112,28 @@ describe "package", #
         write & "Hello!"
     
     expect(templates.render "use-layout.egs")
-      .to.be.rejected.with egs.EgsError
+      .to.be.rejected.with egs-runtime.EGSError
   
   it "errors if an unknown file is rendered", #
-    let templates = egs.Package()
+    let templates = egs-runtime.Package()
     
     expect(#-> templates.render-sync "unknown.egs")
-      .throws egs.EgsError
+      .throws egs-runtime.EGSError
     expect(templates.render "unknown.egs")
-      .to.be.rejected.with egs.EgsError
+      .to.be.rejected.with egs-runtime.EGSError
   
   it "errors if an unknown file is referenced as a partial", #
-    let templates = egs.Package()
+    let templates = egs-runtime.Package()
     templates.set "use-unknown.egs", #(mutable write, context, helpers)*
       write &= "["
       write := yield helpers.partial "unknown", write
       write & "]"
     
     expect(templates.render "use-unknown.egs", name: "world")
-      .to.be.rejected.with egs.EgsError
+      .to.be.rejected.with egs-runtime.EGSError
   
   it "errors if a partial extends a layout", #
-    let templates = egs.Package()
+    let templates = egs-runtime.Package()
     templates.set "layout.egs", #(mutable write, context, helpers)*
       write &= "["
       write := yield helpers.block "start", write
@@ -148,10 +148,10 @@ describe "package", #
       write & "]"
     
     expect(templates.render "use-hello.egs", name: "world")
-      .to.be.rejected.with egs.EgsError
+      .to.be.rejected.with egs-runtime.EGSError
   
   it "errors if a partial uses a block", #
-    let templates = egs.Package()
+    let templates = egs-runtime.Package()
     templates.set "_hello.egs", #(write, context, helpers)*
       yield helpers.block "blah", write, #* ->
     
@@ -161,10 +161,10 @@ describe "package", #
       write & "]"
     
     expect(templates.render "use-hello.egs", name: "world")
-      .to.be.rejected.with egs.EgsError
+      .to.be.rejected.with egs-runtime.EGSError
   
   it "can retrieve individual templates from the package", #
-    let templates = egs.Package()
+    let templates = egs-runtime.Package()
     templates.set "hello.egs", #(write, context, helpers)*
       "$(write)Hello, $(helpers.escape context.name)!"
     let hello = templates.get "hello.egs"
@@ -172,7 +172,7 @@ describe "package", #
       .to.eventually.equal "Hello, world!"
   
   it "can retrieve individual templates from the package and run them synchronously", #
-    let templates = egs.Package()
+    let templates = egs-runtime.Package()
     templates.set "hello.egs", #(write, context, helpers)*
       "$(write)Hello, $(helpers.escape context.name)!"
     let hello = templates.get("hello.egs").sync
@@ -181,7 +181,7 @@ describe "package", #
   
   it "can provide an express-friendly API", #(cb)
     let express = do
-      let templates = egs.Package()
+      let templates = egs-runtime.Package()
       templates.set "hello.egs", #(write, context, helpers)*
         "$(write)Hello, $(helpers.escape context.name)!"
     
@@ -193,9 +193,10 @@ describe "package", #
       cb()
 
 describe "compile-package", #
+  let egs = require '../index'
   describe "can package a folder into a single js file which creates a Package", #
     let run-package-tests(templates)
-      expect(templates).to.be.an.instanceof egs.Package
+      expect(templates).to.be.an.instanceof egs-runtime.Package
       expect(templates.render-sync "hello.egs", name: "world")
         .to.equal "Hello, world!"
       expect(templates.render-sync "use-partial.egs", partial-name: "quote-text", partial-locals: { text: "Hello" })
@@ -219,7 +220,7 @@ describe "compile-package", #
         let js-code = yield to-promise! fs.read-file tmp-package-js, "utf8"
         yield to-promise! fs.unlink tmp-package-js
         let sandbox = {
-          EGS: egs
+          EGSRuntime: egs-runtime
         }
         Function(js-code).call(sandbox)
         run-package-tests sandbox.EGSTemplates
@@ -250,9 +251,9 @@ describe "compile-package", #
         let define(dependencies, factory)!
           // this testing is slightly brittle, but it's easier than building a whole AMD loader.
           expect(arguments.length).to.equal 2
-          expect(dependencies).to.be.eql ['egs']
+          expect(dependencies).to.be.eql ['egs-runtime']
           expect(factory).to.be.a \function
-          definition := factory(egs)
+          definition := factory(egs-runtime)
         define.amd := {}
         Function("""
         return function (define) {
@@ -260,3 +261,4 @@ describe "compile-package", #
         }
         """)().call sandbox, define
         run-package-tests definition
+        expect(sandbox).to.be.empty

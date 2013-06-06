@@ -59,7 +59,7 @@ describe "egs binary", #
       async error, stdout, stderr <- exec "$egs-bin -p $(__dirname)/fixtures"
       expect(error).to.not.exist
       expect(stderr).to.be.empty
-      let sandbox = { EGS: egs }
+      let sandbox = { EGSRuntime: egs }
       Function(stdout).call(sandbox)
       expect(sandbox.EGSTemplates).to.be.an.instanceof egs.Package
       expect(sandbox.EGSTemplates.render-sync "hello.egs", name: "world")
@@ -74,7 +74,7 @@ describe "egs binary", #
       expect(stdout.trim()).to.match r"Compiling fixtures ... \d\.\d+ s"
       async! cb, js-code <- fs.read-file package-js, "utf8"
       async! cb <- fs.unlink package-js
-      let sandbox = { EGS: egs }
+      let sandbox = { EGSRuntime: egs }
       Function(js-code).call(sandbox)
       expect(sandbox.EGSTemplates).to.be.an.instanceof egs.Package
       expect(sandbox.EGSTemplates.render-sync "hello.egs", name: "world")
@@ -85,7 +85,7 @@ describe "egs binary", #
       async error, stdout, stderr <- exec "$egs-bin -p $(__dirname)/fixtures --export Monkey"
       expect(error).to.not.exist
       expect(stderr).to.be.empty
-      let sandbox = { EGS: egs }
+      let sandbox = { EGSRuntime: egs }
       Function(stdout).call(sandbox)
       expect(sandbox.Monkey).to.be.an.instanceof egs.Package
       expect(sandbox.Monkey.render-sync "hello.egs", name: "world")
@@ -96,7 +96,7 @@ describe "egs binary", #
       async error, stdout, stderr <- exec "$egs-bin -p $(__dirname)/fixtures --tokens '{{'"
       expect(error).to.not.exist
       expect(stderr).to.be.empty
-      let sandbox = { EGS: egs }
+      let sandbox = { EGSRuntime: egs }
       Function(stdout).call(sandbox)
       expect(sandbox.EGSTemplates).to.be.an.instanceof egs.Package
       expect(sandbox.EGSTemplates.render-sync "hello-curly.egs", name: "world")
@@ -107,7 +107,7 @@ describe "egs binary", #
       async error, stdout, stderr <- exec "$egs-bin -p $(__dirname)/fixtures --coverage"
       expect(error).to.not.exist
       expect(stderr).to.be.empty
-      let sandbox = { EGS: egs }
+      let sandbox = { EGSRuntime: egs }
       let coverage = {}
       Function(\_$jscoverage, stdout).call(sandbox, coverage)
       expect(sandbox.EGSTemplates).to.be.an.instanceof egs.Package
@@ -138,7 +138,7 @@ describe "egs binary", #
       expect(parsed-sourcemap.sources).to.not.be.empty
       // if it only has semicolons, then it doesn't have any mapping info
       expect(parsed-sourcemap.mappings).to.not.match r'^;*$'
-      let sandbox = { EGS: egs }
+      let sandbox = { EGSRuntime: egs }
       Function(js-code).call(sandbox)
       expect(sandbox.EGSTemplates).to.be.an.instanceof egs.Package
       expect(sandbox.EGSTemplates.render-sync "hello.egs", name: "world")
@@ -150,7 +150,7 @@ describe "egs binary", #
       expect(error).to.not.exist
       expect(stderr).to.be.empty
       expect(stdout).to.not.match r"write"
-      let sandbox = { EGS: egs }
+      let sandbox = { EGSRuntime: egs }
       Function(stdout).call(sandbox)
       expect(sandbox.EGSTemplates).to.be.an.instanceof egs.Package
       expect(sandbox.EGSTemplates.render-sync "hello.egs", name: "world")

@@ -1,21 +1,28 @@
 require! fs
 require! path
-require! './helpers'
-require! './utils'
-
-const PARTIAL_PREFIX = "_"
+/**
+ * require a library in a universal way
+ */
+let amd-require(local-name, amd-name, global-name)
+  let mutable library = require local-name
+  if library
+    library
+  else if is-function! define and define.amd
+    real-require amd-name
+  else if is-object! root
+    library := root[global-name]
+    if not library
+      throw Error "$global-name must be available before EGS is loaded"
+    library
+  else
+    throw Error "Unable to detect runtime environment of EGS"
+let {Package, EGSError, guess-filepath, helper-names: standard-helper-names, make-template, make-helpers-factory, version: egs-runtime-version} = amd-require './runtime', 'egs-runtime', 'EGSRuntime'
+if egs-runtime-version != __VERSION__
+  throw Error "EGS and its runtime must have the same version: '$(__VERSION__)' vs. '$egs-runtime-version'"
+let gorillascript = amd-require 'gorillascript', 'gorillascript', 'GorillaScript'
 
 const DEBUG = false
 const DISABLE_TYPE_CHECKING = not DEBUG
-
-class EgsError extends Error
-  def constructor(mutable @message as String = "")
-    let err = super(message)
-    if is-function! Error.capture-stack-trace
-      Error.capture-stack-trace this, EgsError
-    else if err haskey \stack
-      @stack := err.stack
-  def name = "EgsError"
 
 let memoize(mutable func)
   let mutable result = void
@@ -26,53 +33,6 @@ let memoize(mutable func)
     result
 
 /**
- * Since this may run in the browser, we want to use the AMD system to get GorillaScript if possible.
- */
-let get-gorillascript = memoize #
-  let from-require = require 'gorillascript'
-  if from-require?
-    fulfilled! from-require
-  else if is-function! define and define.amd
-    let defer = __defer()
-    real-require ["gorillascript"], #(gorillascript)
-      defer.fulfill gorillascript
-    defer.promise
-  else if is-object! root
-    if root.GorillaScript
-      fulfilled! root.GorillaScript
-    else
-      rejected! Error "GorillaScript must be available before EGS requests it"
-  else
-    rejected! Error "Unable to detect environment, cannot load GorillaScript"
-
-/**
- * Unlike path.extname, this returns the extension from the first dot onward.
- * If the filename starts with '.', an empty string is returned.
- *
- * For example, "hello.html.egs" will return ".html.egs" rather than ".egs"
- */
-let full-extname(filename)
-  let match = r'^[^\.]+(\..*)$'.exec(path.basename(filename))
-  if match
-    match[1]
-  else
-    ""
-
-/**
- * Guess the filepath that is being requested relative to the file it was
- * requested from.
- */
-let guess-filepath = do
-  let cache = {}
-  #(name, from-filepath)
-    let inner = cache[from-filepath] ownsor= {}
-    inner[name] ownsor=
-      let mutable filename = name
-      if not path.extname filename
-        filename &= full-extname(from-filepath)
-      path.resolve path.dirname(from-filepath), filename
-
-/**
  * Parse the macros from the built-in egs-prelude.gs, return the macros to be
  * used in further compilation.
  */
@@ -80,7 +40,6 @@ let [get-prelude-macros, with-egs-prelude] = do
   let mutable egs-prelude-code = void
   let mutable get-egs-prelude-p = memoize promise! #*
     let text = egs-prelude-code or yield to-promise! fs.read-file "$__dirname/../src/egs-prelude.gs", "utf8"
-    let gorillascript = yield get-gorillascript()
     let result = yield gorillascript.parse text
     result.macros
   let prelude-path-cache = {}
@@ -94,7 +53,6 @@ let [get-prelude-macros, with-egs-prelude] = do
         prelude-path-cache[prelude-path] ownsor= promise!
           let egs-prelude = yield egs-prelude-p
           let text = yield to-promise! fs.read-file prelude-path, "utf8"
-          let gorillascript = yield get-gorillascript()
           let result = yield gorillascript.parse text, { macros: egs-prelude }
           result.macros
     #(code as String)
@@ -107,328 +65,322 @@ let [get-prelude-macros, with-egs-prelude] = do
  * function, allowing for various optimizations.
  */
 let get-ast-pipe = do
-  let make-get-ast-pipe = memoize promise! #*
-    let gorillascript = yield get-gorillascript()
-    let ast = gorillascript.AST
-    /**
-     * Whether the node is a specific ident call
-     */
-    let is-call(node, function-name)
-      if node instanceof ast.Call
-        let {func} = node
-        func instanceof ast.Ident and func.name == function-name
-    /**
-     * Whether the node is a specific method call on the context
-     */
-    let is-context-call(node, function-name)
-      if node instanceof ast.Call
-        let {func} = node
-        if func instanceof ast.Binary and func.op == "."
-          let {left, right} = func
-          return left instanceof ast.Ident and left.name == "context" and right.is-const() and right.const-value() == function-name
-      false
-    /**
-     * Convert `write.call(any, ...args)` to `write(...args)` and `write.apply(any, args)` to `write(args[0])`
-     */
-    let convert-write-call-to-write(node)
-      if node instanceof ast.Call
-        let func = node.func
-        if func instanceof ast.Binary and func.op == "." and func.left instanceof ast.Ident and func.left.name == \write and func.right.is-const()
-          switch func.right.const-value()
-          case \call
-            ast.Block node.pos, [
-              node.args[0]
-              ast.Call node.pos,
-                func.left,
-                node.args[1 to -1]
-            ]
-          case \apply
-            ast.Block node.pos, [
-              node.args[0]
-              if node.args[1].is-noop()
-                  ast.Call node.pos,
-                    func.left
-                    [
-                      ast.IfExpression node.args[1].pos,
-                        ast.Access node.args[1].pos,
-                          node.args[1]
-                          ast.Const node.args[1], 1
-                        ast.Call node.pos,
-                          ast.Access node.pos,
-                            ast.Ident node.pos, \context
-                            ast.Const node.pos, \escape
-                          [ast.Access node.args[1].pos,
-                            node.args[1]
-                            ast.Const node.args[1], 0]
-                        ast.Access node.args[1].pos,
-                          node.args[1]
-                          ast.Const node.args[1], 0
-                    ]
-              else
+  let ast = gorillascript.AST
+  /**
+   * Whether the node is a specific ident call
+   */
+  let is-call(node, function-name)
+    if node instanceof ast.Call
+      let {func} = node
+      func instanceof ast.Ident and func.name == function-name
+  /**
+   * Whether the node is a specific method call on the context
+   */
+  let is-context-call(node, function-name)
+    if node instanceof ast.Call
+      let {func} = node
+      if func instanceof ast.Binary and func.op == "."
+        let {left, right} = func
+        return left instanceof ast.Ident and left.name == "context" and right.is-const() and right.const-value() == function-name
+    false
+  /**
+   * Convert `write.call(any, ...args)` to `write(...args)` and `write.apply(any, args)` to `write(args[0])`
+   */
+  let convert-write-call-to-write(node)
+    if node instanceof ast.Call
+      let func = node.func
+      if func instanceof ast.Binary and func.op == "." and func.left instanceof ast.Ident and func.left.name == \write and func.right.is-const()
+        switch func.right.const-value()
+        case \call
+          ast.Block node.pos, [
+            node.args[0]
+            ast.Call node.pos,
+              func.left,
+              node.args[1 to -1]
+          ]
+        case \apply
+          ast.Block node.pos, [
+            node.args[0]
+            if node.args[1].is-noop()
                 ast.Call node.pos,
                   func.left
                   [
-                    ast.Call node.args[1].pos,
-                      ast.Access node.pos,
-                        ast.Ident node.pos, \context
-                        ast.Const node.args[1].pos, \__maybe-escape
-                      [
+                    ast.IfExpression node.args[1].pos,
+                      ast.Access node.args[1].pos,
+                        node.args[1]
+                        ast.Const node.args[1], 1
+                      ast.Call node.pos,
                         ast.Access node.pos,
                           ast.Ident node.pos, \context
                           ast.Const node.pos, \escape
+                        [ast.Access node.args[1].pos,
+                          node.args[1]
+                          ast.Const node.args[1], 0]
+                      ast.Access node.args[1].pos,
                         node.args[1]
-                      ]
+                        ast.Const node.args[1], 0
                   ]
-            ]
-          default
-            void
-    /**
-     * Convert `write(value, true)` to `write(context.escape(value))`
-     */
-    let convert-write-true-to-write-escape(node)
-      if is-call(node, \write) and node.args.length == 2 and node.args[1].is-const() and node.args[1].const-value()
-        ast.Call node.pos,
-          node.func,
-          [ast.Call node.pos,
-            ast.Access node.pos,
-              ast.Ident node.pos, \context
-              ast.Const node.pos, \escape
-            [node.args[0]]]
-    /**
-     * Convert `context.escape(context.h(value))` to `value`
-     */
-    let unwrap-escape-h(node)
-      if is-context-call(node, \escape) and node.args.length == 1
-        let arg = node.args[0]
-        if arg and (is-context-call(arg, \h) or is-context-call(arg, \html)) and arg.args.length == 1
-          arg.args[0]
-    /**
-     * Naively check on whether the node can be numeric, i.e. whether `x + x`
-     * would give a number rather than a string.
-     */
-    let can-be-numeric(node)
-      if node.is-const()
-        not is-string! node.const-value()
-      else if node instanceof ast.Binary
-        if node.op == "+"
-          can-be-numeric(node.left) and can-be-numeric(node.right)
-        else
-          true
-      else if node instanceof ast.IfExpression
-        can-be-numeric(node.when-true) or can-be-numeric(node.when-false)
-      else if node instanceofsome [ast.BlockExpression, ast.BlockStatement]
-        can-be-numeric(node.body[* - 1])
+            else
+              ast.Call node.pos,
+                func.left
+                [
+                  ast.Call node.args[1].pos,
+                    ast.Access node.pos,
+                      ast.Ident node.pos, \context
+                      ast.Const node.args[1].pos, \__maybe-escape
+                    [
+                      ast.Access node.pos,
+                        ast.Ident node.pos, \context
+                        ast.Const node.pos, \escape
+                      node.args[1]
+                    ]
+                ]
+          ]
+        default
+          void
+  /**
+   * Convert `write(value, true)` to `write(context.escape(value))`
+   */
+  let convert-write-true-to-write-escape(node)
+    if is-call(node, \write) and node.args.length == 2 and node.args[1].is-const() and node.args[1].const-value()
+      ast.Call node.pos,
+        node.func,
+        [ast.Call node.pos,
+          ast.Access node.pos,
+            ast.Ident node.pos, \context
+            ast.Const node.pos, \escape
+          [node.args[0]]]
+  /**
+   * Convert `context.escape(context.h(value))` to `value`
+   */
+  let unwrap-escape-h(node)
+    if is-context-call(node, \escape) and node.args.length == 1
+      let arg = node.args[0]
+      if arg and (is-context-call(arg, \h) or is-context-call(arg, \html)) and arg.args.length == 1
+        arg.args[0]
+  /**
+   * Naively check on whether the node can be numeric, i.e. whether `x + x`
+   * would give a number rather than a string.
+   */
+  let can-be-numeric(node)
+    if node.is-const()
+      not is-string! node.const-value()
+    else if node instanceof ast.Binary
+      if node.op == "+"
+        can-be-numeric(node.left) and can-be-numeric(node.right)
       else
-        not is-context-call(node, \escape)
-  
-    /**
-     * Convert `write(x); write(y)` to `write("" + x + y)`
-     * Convert `if (cond) { write(x); } else { write(y); }` to `write(cond ? x : y)`
-     */
-    let merge-writes(node)
-      if node instanceofsome [ast.BlockExpression, ast.BlockStatement]
-        let body = node.body.slice()
-        let mutable changed = false
-        for subnode, i in body
-          let new-subnode = subnode.walk-with-this merge-writes
-          body[i] := new-subnode
-          if new-subnode != subnode
-            changed := true
-        let mutable i = 0
-        while i < body.length - 1
-          let left = body[i]
-          let right = body[i + 1]
-          if is-call(left, \write) and left.args.length == 1 and is-call(right, \write) and right.args.length == 1
-            changed := true
-            body.splice i, 2, ast.Call left.pos,
-              left.func
-              [ast.Binary left.pos,
-                if can-be-numeric(left.args[0]) and can-be-numeric(right.args[0])
-                  ast.Binary left.pos,
-                    ast.Const left.pos, ""
-                    "+"
-                    left.args[0]
-                else
+        true
+    else if node instanceof ast.IfExpression
+      can-be-numeric(node.when-true) or can-be-numeric(node.when-false)
+    else if node instanceofsome [ast.BlockExpression, ast.BlockStatement]
+      can-be-numeric(node.body[* - 1])
+    else
+      not is-context-call(node, \escape)
+
+  /**
+   * Convert `write(x); write(y)` to `write("" + x + y)`
+   * Convert `if (cond) { write(x); } else { write(y); }` to `write(cond ? x : y)`
+   */
+  let merge-writes(node)
+    if node instanceofsome [ast.BlockExpression, ast.BlockStatement]
+      let body = node.body.slice()
+      let mutable changed = false
+      for subnode, i in body
+        let new-subnode = subnode.walk-with-this merge-writes
+        body[i] := new-subnode
+        if new-subnode != subnode
+          changed := true
+      let mutable i = 0
+      while i < body.length - 1
+        let left = body[i]
+        let right = body[i + 1]
+        if is-call(left, \write) and left.args.length == 1 and is-call(right, \write) and right.args.length == 1
+          changed := true
+          body.splice i, 2, ast.Call left.pos,
+            left.func
+            [ast.Binary left.pos,
+              if can-be-numeric(left.args[0]) and can-be-numeric(right.args[0])
+                ast.Binary left.pos,
+                  ast.Const left.pos, ""
+                  "+"
                   left.args[0]
-                "+"
-                right.args[0]]
-          else
-            i += 1
-        if changed
-          ast.Block(node.pos, body, node.label)
-      else if node instanceofsome [ast.IfStatement, ast.IfExpression] and not node.label
-        let when-true = node.when-true.walk-with-this merge-writes
-        let when-false = node.when-false.walk-with-this merge-writes
-        if is-call(when-true, \write) and (is-call(when-false, \write) or when-false.is-noop())
-          ast.Call node.pos,
-            when-true.func
-            [ast.IfExpression node.pos,
-              node.test.walk-with-this merge-writes
-              when-true.args[0]
-              if when-false.is-noop()
-                ast.Const when-false.pos, ""
               else
-                when-false.args[0]]
-    /**
-     * Return whether the function contains `context.extends`
-     */
-    let has-extends(node)
-      let FOUND = {}
-      try
-        node.walk #(subnode)
-          if subnode instanceof ast.Func
-            subnode
-          else if is-context-call subnode, \extends
-            throw FOUND
-      catch e == FOUND
-        return true
-      false
-    /**
-     * remove all `write()` calls within the function.
-     */
-    let remove-writes-in-function(node)
-      if node instanceof ast.Func
+                left.args[0]
+              "+"
+              right.args[0]]
+        else
+          i += 1
+      if changed
+        ast.Block(node.pos, body, node.label)
+    else if node instanceofsome [ast.IfStatement, ast.IfExpression] and not node.label
+      let when-true = node.when-true.walk-with-this merge-writes
+      let when-false = node.when-false.walk-with-this merge-writes
+      if is-call(when-true, \write) and (is-call(when-false, \write) or when-false.is-noop())
+        ast.Call node.pos,
+          when-true.func
+          [ast.IfExpression node.pos,
+            node.test.walk-with-this merge-writes
+            when-true.args[0]
+            if when-false.is-noop()
+              ast.Const when-false.pos, ""
+            else
+              when-false.args[0]]
+  /**
+   * Return whether the function contains `context.extends`
+   */
+  let has-extends(node)
+    let FOUND = {}
+    try
+      node.walk #(subnode)
+        if subnode instanceof ast.Func
+          subnode
+        else if is-context-call subnode, \extends
+          throw FOUND
+    catch e == FOUND
+      return true
+    false
+  /**
+   * remove all `write()` calls within the function.
+   */
+  let remove-writes-in-function(node)
+    if node instanceof ast.Func
+      node
+    else if is-call node, \write
+      ast.Noop node.pos
+  /**
+   * if `context.extends` is detected within afunction, remove all `write()` calls.
+   */
+  let remove-writes-after-extends(node)
+    if node instanceof ast.Func
+      if has-extends node
+        node.walk remove-writes-in-function
+  /**
+   * Convert `write(value)` to `write += value` and `write.apply(any, arr)` to `write += arr[0]`
+   */
+  let convert-write-to-string-concat(node)
+    if is-call node, \write
+      ast.Binary(node.pos,
+        node.func
+        "+="
+        node.args[0]).walk convert-write-to-string-concat
+  let prepend(left, node)
+    if node instanceof ast.Binary and node.op == "+"
+      ast.Binary left.pos,
+        prepend(left, node.left)
+        "+"
+        node.right
+    else
+      ast.Binary left.pos,
+        left
+        "+"
         node
-      else if is-call node, \write
-        ast.Noop node.pos
-    /**
-     * if `context.extends` is detected within afunction, remove all `write()` calls.
-     */
-    let remove-writes-after-extends(node)
-      if node instanceof ast.Func
-        if has-extends node
-          node.walk remove-writes-in-function
-    /**
-     * Convert `write(value)` to `write += value` and `write.apply(any, arr)` to `write += arr[0]`
-     */
-    let convert-write-to-string-concat(node)
-      if is-call node, \write
-        ast.Binary(node.pos,
-          node.func
-          "+="
-          node.args[0]).walk convert-write-to-string-concat
-    let prepend(left, node)
-      if node instanceof ast.Binary and node.op == "+"
-        ast.Binary left.pos,
-          prepend(left, node.left)
-          "+"
-          node.right
-      else
-        ast.Binary left.pos,
-          left
-          "+"
-          node
-    /**
-     * Convert `write += value; return write;` to `return write + value;`
-     */
-    let convert-last-write(node)
-      if node instanceof ast.BlockStatement
-        let last = node.body[* - 1]
-        if last instanceof ast.Return and last.node instanceof ast.Ident and last.node.name == \write
-          let before-last = node.body[* - 2]
-          if before-last and before-last instanceof ast.Binary and before-last.op == "+=" and before-last.left instanceof ast.Ident and before-last.left.name == \write
-            ast.BlockStatement node.pos, [
-              ...node.body[0 til -2]
-              ast.Return before-last.pos,
-                prepend before-last.left, before-last.right
-            ], node.label
-    /**
-     * At the top of the generated function is if (context == null) { context = {}; }
-     * Since context is guaranteed to exist, we can turn `context == null` into `false`
-     */
-    let remove-context-null-check(node)
-      if node instanceof ast.Binary and node.op == "==" and node.left instanceof ast.Ident and node.left.name == \context and node.right.is-const() and not node.right.const-value()?
-        ast.Const node.pos, false
-  
-    /**
-     * Change `context.key` to `helpers.key` if "key" exists in `helper-names`
-     */
-    let change-context-to-helpers(helper-names) #(node)
-      if node instanceof ast.Binary and node.op == "." and node.left instanceof ast.Ident and node.left.name == \context and node.right.is-const() and node.right.const-value() in helper-names
-        ast.Binary node.pos,
-          ast.Ident node.left.pos, \helpers
-          "."
-          node.right
-  
-    /**
-     * Convert the function like `function (write, context) {}` to `function (write, context, helpers) {}`
-     */
-    let add-helpers-to-params(node)
-      if node instanceof ast.Func and node.params.length == 2 and node.params[0].name == \write and node.params[1].name == \context
+  /**
+   * Convert `write += value; return write;` to `return write + value;`
+   */
+  let convert-last-write(node)
+    if node instanceof ast.BlockStatement
+      let last = node.body[* - 1]
+      if last instanceof ast.Return and last.node instanceof ast.Ident and last.node.name == \write
+        let before-last = node.body[* - 2]
+        if before-last and before-last instanceof ast.Binary and before-last.op == "+=" and before-last.left instanceof ast.Ident and before-last.left.name == \write
+          ast.BlockStatement node.pos, [
+            ...node.body[0 til -2]
+            ast.Return before-last.pos,
+              prepend before-last.left, before-last.right
+          ], node.label
+  /**
+   * At the top of the generated function is if (context == null) { context = {}; }
+   * Since context is guaranteed to exist, we can turn `context == null` into `false`
+   */
+  let remove-context-null-check(node)
+    if node instanceof ast.Binary and node.op == "==" and node.left instanceof ast.Ident and node.left.name == \context and node.right.is-const() and not node.right.const-value()?
+      ast.Const node.pos, false
+
+  /**
+   * Change `context.key` to `helpers.key` if "key" exists in `helper-names`
+   */
+  let change-context-to-helpers(helper-names) #(node)
+    if node instanceof ast.Binary and node.op == "." and node.left instanceof ast.Ident and node.left.name == \context and node.right.is-const() and node.right.const-value() in helper-names
+      ast.Binary node.pos,
+        ast.Ident node.left.pos, \helpers
+        "."
+        node.right
+
+  /**
+   * Convert the function like `function (write, context) {}` to `function (write, context, helpers) {}`
+   */
+  let add-helpers-to-params(node)
+    if node instanceof ast.Func and node.params.length == 2 and node.params[0].name == \write and node.params[1].name == \context
+      ast.Func node.pos,
+        node.name
+        [
+          node.params[0]
+          node.params[1]
+          ast.Ident node.pos, \helpers
+        ]
+        node.variables
+        node.body
+        node.declarations
+  /**
+   * Convert a function like `function (write, context, helpers) { ... return { close, iterator, next, throw } }`
+   * into `function (write, context, helpers) { ... return { ..., flush } }`
+   */
+  let add-flush-to-generator-return(node)
+    if node instanceof ast.Func and node.params.length == 3 and node.params[0].name == \write and node.params[1].name == \context and node.params[2].name == \helpers and node.body instanceof ast.BlockStatement
+      let last-statement = node.body.body[* - 1]
+      if last-statement instanceof ast.Return and last-statement.node instanceof ast.Obj
+        let pos = last-statement.pos
         ast.Func node.pos,
           node.name
-          [
-            node.params[0]
-            node.params[1]
-            ast.Ident node.pos, \helpers
-          ]
+          node.params
           node.variables
-          node.body
+          ast.BlockStatement node.body.pos, [
+            ...node.body.body[0 til -1]
+            ast.Return pos,
+              ast.Obj last-statement.node.pos, [
+                ...last-statement.node.elements
+                ast.Obj.Pair pos, \flush,
+                  ast.Func pos,
+                    null
+                    []
+                    [\flushed]
+                    ast.Block pos, [
+                      ast.Assign pos,
+                        ast.Ident pos, \flushed
+                        ast.Ident pos, \write
+                      ast.Assign pos,
+                        ast.Ident pos, \write
+                        ast.Const pos, ""
+                      ast.Return pos,
+                        ast.Ident pos, \flushed
+                    ]
+              ]
+          ]
           node.declarations
-    /**
-     * Convert a function like `function (write, context, helpers) { ... return { close, iterator, next, throw } }`
-     * into `function (write, context, helpers) { ... return { ..., flush } }`
-     */
-    let add-flush-to-generator-return(node)
-      if node instanceof ast.Func and node.params.length == 3 and node.params[0].name == \write and node.params[1].name == \context and node.params[2].name == \helpers and node.body instanceof ast.BlockStatement
-        let last-statement = node.body.body[* - 1]
-        if last-statement instanceof ast.Return and last-statement.node instanceof ast.Obj
-          let pos = last-statement.pos
-          ast.Func node.pos,
-            node.name
-            node.params
-            node.variables
-            ast.BlockStatement node.body.pos, [
-              ...node.body.body[0 til -1]
-              ast.Return pos,
-                ast.Obj last-statement.node.pos, [
-                  ...last-statement.node.elements
-                  ast.Obj.Pair pos, \flush,
-                    ast.Func pos,
-                      null
-                      []
-                      [\flushed]
-                      ast.Block pos, [
-                        ast.Assign pos,
-                          ast.Ident pos, \flushed
-                          ast.Ident pos, \write
-                        ast.Assign pos,
-                          ast.Ident pos, \write
-                          ast.Const pos, ""
-                        ast.Return pos,
-                          ast.Ident pos, \flushed
-                      ]
-                ]
-            ]
-            node.declarations
-        
-    #(helper-names) #(root)
-      root
-        .walk convert-write-call-to-write
-        .walk convert-write-true-to-write-escape
-        .walk unwrap-escape-h
-        .walk merge-writes
-        .walk remove-writes-after-extends
-        .walk convert-write-to-string-concat
-        .walk convert-last-write
-        .walk remove-context-null-check
-        .walk change-context-to-helpers(helper-names)
-        .walk add-helpers-to-params
-        .walk add-flush-to-generator-return
-  promise! #(helper-names)*
-    let get-ast-pipe = yield make-get-ast-pipe()
-    get-ast-pipe(helper-names)
+      
+  #(helper-names) #(root)
+    root
+      .walk convert-write-call-to-write
+      .walk convert-write-true-to-write-escape
+      .walk unwrap-escape-h
+      .walk merge-writes
+      .walk remove-writes-after-extends
+      .walk convert-write-to-string-concat
+      .walk convert-last-write
+      .walk remove-context-null-check
+      .walk change-context-to-helpers(helper-names)
+      .walk add-helpers-to-params
+      .walk add-flush-to-generator-return
 
 /**
  * Compile a chunk of egs-code into a chunk of JavaScript code.
  */
 let compile-code = promise! #(egs-code as String, compile-options as {}, helper-names as [])*
   let macros = yield get-prelude-macros(compile-options.prelude)
-  let ast-pipe = yield get-ast-pipe(helper-names)
+  let ast-pipe = get-ast-pipe(helper-names)
   let options = {} <<< compile-options <<< {+embedded, +noindent, macros, prelude: null, ast-pipe }
   let mutable code = void
   let mutable is-generator = false
-  let gorillascript = yield get-gorillascript()
   try
     code := (yield gorillascript.compile egs-code, options).code
   catch
@@ -560,225 +512,6 @@ let get-compile-options(options = {})
     options.uglify
   }
 
-let to-maybe-sync(promise-factory)
-  let maybe-sync = promise-factory.maybe-sync
-  for k, v of promise-factory
-    maybe-sync[k] := v
-  maybe-sync
-
-let flush-stream(stream-send, write as String)
-  if write and stream-send
-    stream-send write
-    ''
-  else
-    write
-
-let simple-helpers-proto = {} <<< helpers
-let helpers-proto = {} <<< helpers <<< {
-  extends(name as String, locals)!
-    if not @__current-filepath$
-      throw EgsError "Can only use extends if the 'filename' option is specified"
-    if @__in-partial$
-      throw EgsError "Cannot use extends when in a partial"
-    if @__extended-by$
-      throw EgsError "Cannot use extends more than once"
-    @__extended-by$ := @__fetch-compiled$ name
-    @__extended-by-locals$ := locals
-  
-  partial: to-maybe-sync promise! #(mutable name as String, mutable write as String, locals = {})*
-    if not @__current-filepath$
-      throw EgsError "Can only use partial if the 'filename' option is specified"
-    name := path.join(path.dirname(name), @__partial-prefix$ ~& path.basename(name))
-    write := flush-stream @__stream-send$, write
-    let {filepath, compiled: {func}} = yield @__fetch-compiled$ name
-    let partial-helpers = {extends this
-      __current-filepath$: filepath
-      __in-partial$: true
-    }
-    if func.maybe-sync
-      yield func.maybe-sync write, locals, partial-helpers
-    else
-      func write, locals, partial-helpers
-  
-  block: to-maybe-sync promise! #(mutable name as String, mutable write, inside as ->|null)*
-    if @__in-partial$
-      throw EgsError "Cannot use block when in a partial"
-
-    write := flush-stream @__stream-send$, write
-    let blocks = @__blocks$
-    let root-helpers = @__helpers$
-    if @__extended-by$ and not root-helpers.__in-block$
-      if inside? and blocks not ownskey name
-        blocks[name] := inside
-      write
-    else
-      let block = blocks![name] or inside
-      let mutable result = write
-      if block
-        root-helpers.__in-block$ := true
-        result := yield promise!(true) block write
-        root-helpers.__in-block$ := false
-      result
-  
-  __handle-extends$: to-maybe-sync promise! #(current-write)*
-    let {filepath, compiled: {func}} = yield @__extended-by$
-    let new-helpers = { extends this
-      __current-filepath$: filepath
-      __extended-by$: null
-      __extended-by-locals$: null
-    }
-    let locals = @__extended-by-locals$ or {}
-    let text = if func.maybe-sync
-      yield func.maybe-sync "", locals, new-helpers
-    else
-      func "", locals, new-helpers
-    if new-helpers.__extended-by$
-      yield new-helpers.__handle-extends$@(new-helpers, text)
-    else
-      text
-}
-
-/**
- * Make the `helpers` object to be passed into the template.
- * All global access is converted to be either `context` or `helpers` access within the template.
- */
-let make-helpers-factory = do
-  let make-factory(partial-prefix, current-filepath, fetch-compiled, escaper, options-context)
-    let base-helpers = { extends helpers-proto }
-    base-helpers <<< {
-      __current-filepath$: current-filepath
-      __partial-prefix$: partial-prefix
-      __fetch-compiled$: fetch-compiled
-      __extended-by$: null
-      __extended-by-locals$: null
-      __in-partial$: false
-      __in-block$: false
-      escape: escaper
-    }
-    let simple-helpers = { extends simple-helpers-proto }
-    simple-helpers <<< {
-      __current-filepath$: current-filepath
-      escape: escaper
-    }
-    if options-context
-      simple-helpers <<< options-context
-      base-helpers <<< options-context
-    #(is-simple)
-      if is-simple
-        simple-helpers
-      else
-        let helpers = { extends base-helpers }
-        helpers.__helpers$ := helpers
-        helpers.__blocks$ := {}
-        helpers
-  #(options as {}, helper-names)
-    make-factory(
-      if is-string! options.partial-prefix
-        options.partial-prefix
-      else
-        PARTIAL_PREFIX
-      options.filename
-      do
-        let in-package = options.__in-package$
-        if in-package
-          #(name) -> in-package._find name, @__current-filepath$
-        else
-          let compile-options = get-compile-options(options)
-          #(name) -> find-and-compile-file name, @__current-filepath$, compile-options, helper-names
-      if is-function! options.escape then options.escape else utils.escape-HTML
-      if options ownskey \context
-        options.context
-      else
-        options)
-
-/**
- * Make a template from the compilation that was yielded on.
- */
-let make-template(get-compilation-p as ->, make-helpers as ->, cache-compilation as Boolean) as Function<Promise<String>, {}>
-  let mutable compilation = void
-  let template = promise! #(data)* as Promise<String>
-    let mutable tmp = cache-compilation and compilation
-    if not tmp
-      tmp := yield get-compilation-p()
-      if cache-compilation
-        compilation := tmp
-    let helpers = make-helpers tmp.is-simple
-    let mutable result = tmp.func "", data or {}, helpers
-    if result and result.then
-      result := yield result
-    if helpers.__extended-by$
-      yield helpers.__handle-extends$.maybe-sync@(helpers, result)
-    else
-      result
-  // this is practically the above function, only synchronous
-  template.sync := #(data)
-    let mutable tmp = cache-compilation and compilation
-    if not tmp
-      tmp := get-compilation-p().sync()
-      if cache-compilation
-        compilation := tmp
-    let helpers = make-helpers tmp.is-simple
-    let func = tmp.func
-    let mutable result = (func.sync or func) "", data or {}, helpers
-    if not is-string! result
-      result := result.sync()
-    if helpers.__extended-by$
-      helpers.__handle-extends$.sync@(helpers, result)
-    else
-      result
-  template.stream := #(data)
-    let {send: stream-send, end: stream-end, throw: stream-throw, public: stream-public} = Stream()
-    let promise = promise!
-      let mutable tmp = cache-compilation and compilation
-      if not tmp
-        tmp := yield get-compilation-p()
-        if cache-compilation
-          compilation := tmp
-      let helpers = make-helpers tmp.is-simple
-      helpers.__stream-send$ := stream-send
-      // definitely need at least a single-tick delay to allow for stream event registration
-      yield delay! 0
-      let func = tmp.func
-      let mutable result = if func.stream
-        func.stream stream-send, "", data or {}, helpers
-      else
-        func "", data or {}, helpers
-      if result and result.then
-        result := yield result
-      if helpers.__extended-by$
-        let extension = helpers.__handle-extends$
-        // TODO: convert to stream
-        yield extension@(helpers, result)
-      else
-        result
-    promise
-      .then(#(value)!
-        if value
-          stream-send value
-        stream-end())
-      .then null, stream-throw
-    stream-public
-  template.ready := promise! #!*
-    if cache-compilation
-      if not compilation
-        compilation := yield get-compilation-p()
-      let {mutable func} = compilation
-      if func.sync
-        func := func.sync
-      // in the case where the template doesn't extend and might be called synchronously,
-      // and we're caching the compilation, optimize it as much as possible.
-      if compilation.is-simple
-        let helpers = make-helpers(true)
-        template.sync := #(data)
-          let result = func "", data or {}, helpers
-          if not is-string! result
-            result.sync()
-          else
-            result
-    else
-      yield get-compilation-p()
-  template
-
 /**
  * Retrieve only the valid parts of the options so that old data is not kept around.
  */
@@ -808,10 +541,7 @@ let get-helper-names(options)
     options.context
   else
     options
-  let result = [\escape, \extends, \partial, \block]
-  for k of helpers
-    if k not in result
-      result.push k
+  let result = [\escape, \extends, \partial, \block, ...standard-helper-names]
   if context
     for k of context
       if k not in result
@@ -821,19 +551,35 @@ let get-helper-names(options)
   result.sort()
 
 /**
+ * Create a template given either a filepath or a chunk of egs-code.
+ */
+let compile-template-from-text-or-file(is-filepath as Boolean, mutable egs-code-or-filepath as String, mutable options = {context: null})
+  let helper-names = get-helper-names(options)
+  let compile-options = get-compile-options(options)
+  make-template(
+    if is-filepath
+      compile-file egs-code-or-filepath, compile-options, helper-names
+    else
+      return-same compile egs-code-or-filepath, compile-options, helper-names
+    make-helpers-factory options, #(name, current-filepath)
+      find-and-compile-file name, current-filepath, compile-options, helper-names
+    if is-filepath
+      options.cache
+    else
+      true)
+
+/**
  * Create a template given the egs-code and options.
  */
 let compile-template(mutable egs-code as String, mutable options = {context: null}) as Function<Promise<String>>
-  let helper-names = get-helper-names(options)
-  make-template return-same(compile(egs-code, get-compile-options(options), helper-names)), make-helpers-factory(options, helper-names), true
+  compile-template-from-text-or-file false, egs-code, options
 
 /**
  * Create a template from a given filename and options.
  */
 let compile-template-from-file(filepath as String, options = {context: null}) as Function<Promise<String>, {}>
   options.filename := filepath
-  let helper-names = get-helper-names(options)
-  make-template compile-file(filepath, get-compile-options(options), helper-names), make-helpers-factory(options, helper-names), options.cache
+  compile-template-from-text-or-file true, filepath, options
 
 /**
  * Render a chunk of egs-code given the options and optional context.
@@ -917,9 +663,8 @@ let compile-package = promise! #(input-dirpath as String, output-filepath as Str
   if not dirstat.is-directory()
     throw Error "Expected '$(input-dirpath)' to be a directory."
   let input-filepaths = yield find-all-extensioned-filepaths input-dirpath, ".egs"
-  let gorillascript = yield get-gorillascript()
   let macros = yield get-prelude-macros(options.prelude)
-  let ast-pipe = yield get-ast-pipe(get-helper-names({}))
+  let ast-pipe = get-ast-pipe(get-helper-names({}))
   let full-ast-pipe(mutable root, , ast)
     let files-assigned = {}
     let is-do-wrap(node)
@@ -980,7 +725,7 @@ let compile-package = promise! #(input-dirpath as String, output-filepath as Str
                 ast.Call root.pos,
                   ast.Ident root.pos, \define
                   [
-                    ast.Arr root.pos, [ast.Const root.pos, "egs"]
+                    ast.Arr root.pos, [ast.Const root.pos, "egs-runtime"]
                     ast.Ident root.pos, \factory
                   ]
                 ast.Assign root.pos,
@@ -992,7 +737,7 @@ let compile-package = promise! #(input-dirpath as String, output-filepath as Str
                     [
                       ast.Access root.pos,
                         ast.This root.pos,
-                        ast.Const root.pos, \EGS
+                        ast.Const root.pos, \EGSRuntime
                     ]
           ast.Const root.pos, \call
         [
@@ -1000,23 +745,23 @@ let compile-package = promise! #(input-dirpath as String, output-filepath as Str
           ast.Func root.pos,
             null
             [
-              ast.Ident root.pos, \EGS
+              ast.Ident root.pos, \EGSRuntime
             ]
             [\templates]
             ast.Block root.pos, [
               ast.IfStatement root.pos,
                 ast.Unary root.pos,
                   "!"
-                  ast.Ident root.pos, \EGS
+                  ast.Ident root.pos, \EGSRuntime
                 ast.Throw root.pos,
                   ast.Call root.pos,
                     ast.Ident root.pos, \Error
-                    [ast.Const root.pos, "Expected EGS to be available"]
+                    [ast.Const root.pos, "Expected EGSRuntime to be available"]
               ast.Assign root.pos,
                 ast.Ident root.pos, \templates
                 ast.Call root.pos,
                   ast.Access root.pos,
-                    ast.Ident root.pos, \EGS
+                    ast.Ident root.pos, \EGSRuntime
                     ast.Const root.pos, \Package
                   []
               root.body
@@ -1050,129 +795,6 @@ let compile-package = promise! #(input-dirpath as String, output-filepath as Str
     ast-pipe: full-ast-pipe
   }
 
-/**
- * A package of pre-compiled files, which can still use extends, partial, block
- * in order to make full use of the helper suite.
- *
- * This is primarily meant to be used in browsers, but could be used in
- * production-mode server apps.
- */
-class Package
-  def constructor(@options = {})
-    @factories := {}
-    @templates := {}
-  
-  let with-leading-slash(filepath as String)
-    if filepath.char-code-at(0) != "/".char-code-at(0)
-      "/" & filepath
-    else
-      filepath
-  
-  /**
-   * Set a filepath in the package to have a certain generator which will
-   * become a promise, as well as any options.
-   *
-   * Returns `this`, for fluent APIs.
-   */
-  def set(mutable filepath as String, generator as ->, options = {})
-    filepath := with-leading-slash filepath
-    let factory = @factories[filepath] := promise! generator
-    @templates[filepath] := make-template return-same(fulfilled! { func: factory, is-simple: false }), make-helpers-factory({__in-package$: this, filename: filepath} <<< @options <<< options), true
-    this
-  
-  /**
-   * Get the template for the given filepath, or throw an error if it doesn't exist.
-   */
-  def get(mutable filepath as String) as Function<Promise<String>, {}>
-    filepath := with-leading-slash filepath
-    let templates = @templates
-    if templates not ownskey filepath
-      throw EgsError "Unknown filepath: '$filepath'"
-    else
-      templates[filepath]
-  
-  /**
-   * Render a template at the given filepath with the provided data to be used
-   * as the context.
-   */
-  def render = promise! #(filepath as String, data = {})* as Promise<String>
-    let template = @get filepath
-    yield template data
-  
-  /**
-   * Render a template at the given filepath with the provided data to be used
-   * as the context, synchronously. If not possible to execute synchronously,
-   * an error is thrown.
-   */
-  def render-sync(filepath as String, data = {}) as String
-    let template = @get filepath
-    template.sync data
-  
-  /**
-   * Render a template at the given filepath with the provided data to be used
-   * as the context, returning a stream.
-   */
-  def render-stream(filepath as String, data = {}) as SimpleEventEmitter
-    let template = @get filepath
-    template.stream data
-  
-  /**
-   * Find the filepath of the requested name and return the full filepath and
-   * the compiled result.
-   */
-  def _find(name as String, from-filepath as String)
-    let filepath = guess-filepath name, from-filepath
-    let factories = @factories
-    if factories not ownskey filepath
-      rejected! EgsError "Cannot find '$name' from '$filepath', tried '$filepath'"
-    else
-      fulfilled! { filepath, compiled: { func: factories[filepath], is-simple: false } }
-  
-  def express()
-    #(path as String, data, callback as ->)@!
-      (from-promise! @render(path, data))(callback)
-
-/**
- * Create a stream.
- *
- * The stream has a public API, as well as three functions: `send`, `throw`,
- * and `end`.
- *
- * As soon as `throw` or `end` is called, no more events will be emitted.
- *
- * The public API consists of an Object with a single method: `on`, which is
- * expected to take a type of 'data', 'error', or 'end' and a callback for
- * when the event occurs. A single Stream should not register for the same
- * event more than once.
- */
-let Stream()
-  let mutable events as {}|null = {}
-  let complete(type, value)!
-    if events
-      let event = events[type]
-      // `events` might have callbacks with memory references we no longer
-      // care about, so we should clear it out as it won't be used anymore.
-      events := null
-      if event
-        set-immediate event, value
-  {
-    send(value as String)!
-      if events
-        let event = events.data
-        if event
-          event value
-    throw(err)!
-      complete \error, err
-    end()!
-      complete \end
-    public: {
-      on(type as String, callback as ->)
-        if events
-          events[type] := callback
-        this
-    }
-  }
-
 module.exports := compile-template <<< {
   version: __VERSION__
   from-file: compile-template-from-file
@@ -1183,7 +805,7 @@ module.exports := compile-template <<< {
   with-egs-prelude
   compile-package
   Package
-  EgsError
+  EGSError
   compile(egs-code as String = "", options = {}, helper-names = [])
     compile-code(egs-code, get-compile-options(options), helper-names)
   __express: express

@@ -1,7 +1,7 @@
 {
   "name": "egs-docs",
   "description": "EGS documentation",
-  "version": "0.1.7",
+  "version": "0.2.0",
   "private": true,
   "author": {
     "name": "Cameron Kenneth Knight",
@@ -16,8 +16,8 @@
   },
   "readmeFilename": "README",
   "devDependencies": {
-    "gorillascript": "~0.8.21",
-    "egs": "~0.1.7",
+    "gorillascript": "~0.8.25",
+    "egs": "~0.2.0",
     "uglify-js": "~2.3.4",
     "grunt": "~0.4.1",
     "grunt-gorilla": "~0.1.3",

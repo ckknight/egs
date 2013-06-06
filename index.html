@@ -72,6 +72,7 @@
       <li>Safe escaping by default</li>
       <li>Coverage support</li>
       <li><a href="#streams">Streamable rendering</a></li>
+      <li><a href="#browser">Architecturally-separated compiler and runtime</a></li>
     </ul>
   </section>
   
@@ -413,7 +414,14 @@ http.createServer(function (req, res) {
   <section id="browser">
     <h2>Browser support</h2>
     
-    <p>There is a browser-specific version of EGS (<tt>egs-browser.js</tt>) that allows you to run pre-packaged templates or, if GorillaScript is available, compile on-demand. It is not recommended for production to compile templates on demand, though, as it could be done ahead-of-time.</p>
+    <p>There are two files for browser-specific handling of EGS.</p>
+    
+    <ol>
+      <li><tt>extras/egs-runtime.js</tt>: All you need to render precompiled template packages (built with <tt>egs -p</tt>).</li>
+      <li><tt>extras/egs.js</tt>: Allows in-browser compilation. Depends on <tt>extras/egs-runtime.js</tt>. Requires <a href="http://ckknight.github.io/gorillascript/">GorillaScript</a> to be available.</li>
+    </ol>
+    
+    <p>In production, it is recommended to only use <tt>egs-runtime.js</tt>, as any templates should be able to be precompiled.</p>
   </section>
   
   <section id="ide">

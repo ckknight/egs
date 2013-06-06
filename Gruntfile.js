@@ -17,7 +17,8 @@ module.exports = function (grunt) {
           "lib/prism_gs.js",
           "lib/prism_egs.js",
           "node_modules/gorillascript/extras/gorillascript.js",
-          "node_modules/egs/lib/egs-browser.js",
+          "node_modules/egs/extras/egs-runtime.js",
+          "node_modules/egs/extras/egs.js",
           "lib/index.js",
           "lib/examples.js"
         ],

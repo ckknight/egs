@@ -341,7 +341,25 @@ http.createServer(function (req, res) {
     
     <p>There is a command-line <tt>egs</tt> binary that can be used to generate packages or to render templates ad-hoc. Using <tt>egs -p "folder/path"</tt>, you can very easily package up a whole folder of <tt>.egs</tt> files into a single <tt>.js</tt> file. You can even choose to add coverage or SourceMap support.</p>
     
-    <p>TODO: Add grunt support.</p>
+    <p>The recommended way to automatically build EGS packages is through <a href="http://gruntjs.com">Grunt</a>. It is easy to add EGS support with the <a href="http://github.com/ckknight/grunt-egs">grunt-egs</a> plugin.</p>
+    
+    <p>Here is a very simple example of how to a folder of <tt>.egs</tt> files into a single <tt>.js</tt> file:</p>
+    
+    <pre class="gs-code no-convert"><code class="language-javascript">grunt.initConfig({
+  gorilla: {
+    dist: {
+      options: {
+        sourceMap: true,
+        export: "MyAppViews"
+      }
+      files: {
+        "lib/views.js": ["src/views"]
+      }
+    }
+  }
+});
+</code></pre>
+    
   </section>
   
   <section id="browser">

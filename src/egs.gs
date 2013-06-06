@@ -493,7 +493,7 @@ let compile = promise! #(egs-code as String, compile-options as {}, helper-names
  */
 let make-cache-key(options) as String
   let parts = []
-  for key in [\open, \open-write, \open-comment, \close, \close-write, \close-comment, \cache, \prelude]
+  for key in [\open, \open-write, \open-comment, \open-literal, \close, \close-write, \close-comment, \close-literal, \cache, \prelude]
     parts.push options[key] or "\0"
   parts.join "\0"
 
@@ -549,9 +549,11 @@ let get-compile-options(options = {})
     embedded-open: options.open
     embedded-open-write: options.open-write
     embedded-open-comment: options.open-comment
+    embedded-open-literal: options.open-literal
     embedded-close: options.close
     embedded-close-write: options.close-write
     embedded-close-comment: options.close-comment
+    embedded-close-literal: options.close-literal
     options.prelude
     options.cache
     options.undefined-name
@@ -785,9 +787,11 @@ let sift-options(options) {
   options.open
   options.open-write
   options.open-comment
+  options.open-literal
   options.close
   options.close-write
   options.close-comment
+  options.close-literal
   options.cache
   options.escape
   options.partial-prefix
@@ -1031,9 +1035,11 @@ let compile-package = promise! #(input-dirpath as String, output-filepath as Str
     embedded-open: options.open
     embedded-open-write: options.open-write
     embedded-open-comment: options.open-comment
+    embedded-open-literal: options.open-literal
     embedded-close: options.close
     embedded-close-write: options.close-write
     embedded-close-comment: options.close-comment
+    embedded-close-literal: options.close-literal
     options.coverage
     options.source-map
     options.undefined-name

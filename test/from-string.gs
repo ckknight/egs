@@ -72,14 +72,16 @@ describe "from a string", #
       {% else: %}
       Hello, {{ name }}!
       {% end %}
+      {# this part is ignored #}
       <%= name %>
-      """, { open: "{%", close: "%}", open-write: "{{", close-write: "}}" }
+      {@{{ name }}@}
+      """, { open: "{%", close: "%}", open-write: "{{", close-write: "}}", open-comment: "{#", close-comment: "#}", open-literal: "{@", close-literal: "@}" }
       
       every-promise! [
         expect(template { name: "world", -awesome })
-          .to.eventually.match r'^\s*Hello, world!\s*<%= name %>$'
+          .to.eventually.match r'^\s*Hello, world!\s*<%= name %>\s*{{ name }}$'
         expect(template { name: "egs", +awesome })
-          .to.eventually.match r'^\s*You''re awesome, egs!\s*<%= name %>$'
+          .to.eventually.match r'^\s*You''re awesome, egs!\s*<%= name %>\s*{{ name }}$'
       ]
     
     it "allows helper functions to be called", #
@@ -243,6 +245,24 @@ describe "from a string", #
       
       expect(template())
         .to.eventually.equal "Hello, &lt;world&gt;!"
+    
+    it "allows literal chunks", #
+      let template = egs """
+      <script type="text/egs-template"><%@
+      Hello, <%= name %>
+      <%-- a comment --%>
+      <% some-func() %>
+      @%></script>
+      """
+      
+      expect(template())
+        .to.eventually.equal """
+        <script type="text/egs-template">
+        Hello, <%= name %>
+        <%-- a comment --%>
+        <% some-func() %>
+        </script>
+        """
   
   describe "can render immediately", #
     it "without making a template first", #

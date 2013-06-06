@@ -112,6 +112,8 @@ let main = promise!
     options.close-write := "}}"
     options.open-comment := "{#"
     options.close-comment := "#}"
+    options.open-literal := "{@"
+    options.close-literal := "@}"
   default
     void
   

@@ -1,7 +1,7 @@
 {
   "name": "egs",
   "description": "Embedded GorillaScript template generator",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "author": {
     "name": "Cameron Kenneth Knight",
     "email": "ckknight@gmail.com"

@@ -408,8 +408,8 @@
         makeTemplate = _ref.makeTemplate;
         makeHelpersFactory = _ref.makeHelpersFactory;
         egsRuntimeVersion = _ref.version;
-        if (egsRuntimeVersion !== "0.2.0") {
-          throw Error("EGS and its runtime must have the same version: '0.2.0' vs. '" + egsRuntimeVersion + "'");
+        if (egsRuntimeVersion !== "0.2.1") {
+          throw Error("EGS and its runtime must have the same version: '0.2.1' vs. '" + egsRuntimeVersion + "'");
         }
         gorillascript = amdRequire("gorillascript", "gorillascript", "GorillaScript");
         function memoize(func) {
@@ -1915,7 +1915,7 @@
                                   ast.Ident(root.pos, "EGSRuntime"),
                                   ast.Const(root.pos, "Package")
                                 ),
-                                []
+                                [ast.Const(root.pos, "0.2.1")]
                               )
                             ),
                             root.body,
@@ -1990,7 +1990,7 @@
             }
           };
         });
-        compileTemplate.version = "0.2.0";
+        compileTemplate.version = "0.2.1";
         compileTemplate.fromFile = compileTemplateFromFile;
         compileTemplate.render = render;
         compileTemplate.renderFile = renderFile;

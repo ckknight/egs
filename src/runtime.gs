@@ -131,22 +131,26 @@ let helpers-proto = {} <<< helpers <<< {
  * from its String representation.
  */
 let escape-HTML = do
-  let escapes = {
-    "&": "&amp;"
-    "<": "&lt;"
-    ">": "&gt;"
-    '"': "&quot;"
-    "'": "&#39;"
-  }
-  let replacer(x) -> escapes[x]
-  let regex = r"[&<>""']"g
-  let escaper(text) -> text.replace(regex, replacer)
+  let full-regex = r'[&<>"]'
+  let amp-regex = r'&'g
+  let lt-regex = r'<'g
+  let gt-regex = r'>'g
+  let quot-regex = r'"'g
+  let escaper(text)
+    if full-regex.test text
+      text
+        .replace amp-regex, "&amp;"
+        .replace lt-regex, "&lt;"
+        .replace gt-regex, "&gt;"
+        .replace quot-regex, "&quot;"
+    else
+      text
   #(value)
     if is-string! value
       escaper value
     else if is-number! value
       value.to-string()
-    else if value? and is-function! value.to-HTML
+    else if value and is-function! value.to-HTML
       String value.to-HTML()
     else
       throw TypeError "Expected a String, Number, or Object with a toHTML method, got $(typeof! value)"
@@ -295,9 +299,16 @@ let make-template(get-compilation-p as ->, make-helpers as ->, cache-compilation
  * production-mode server apps.
  */
 class Package
-  def constructor(@options = {})
+  def constructor(version, options)
+    if version and is-object! version
+      return Package@ this, null, version
+    
+    if version and version != __VERSION__
+      throw Error "EGS Packages must be compiled with the same version as the EGS runtime: '$version' vs. '$(__VERSION__)'"
+    
     @factories := {}
     @templates := {}
+    @options := options ? {}
   
   let with-leading-slash(filepath as String)
     if filepath.char-code-at(0) != "/".char-code-at(0)

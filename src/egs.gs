@@ -763,7 +763,9 @@ let compile-package = promise! #(input-dirpath as String, output-filepath as Str
                   ast.Access root.pos,
                     ast.Ident root.pos, \EGSRuntime
                     ast.Const root.pos, \Package
-                  []
+                  [
+                    ast.Const root.pos, __VERSION__
+                  ]
               root.body
               ast.Return root.pos,
                 ast.Ident root.pos, \templates

@@ -1,4 +1,5 @@
 require! fs
+require! os
 require! path
 /**
  * require a library in a universal way
@@ -16,7 +17,8 @@ let amd-require(local-name, amd-name, global-name)
     library
   else
     throw Error "Unable to detect runtime environment of EGS"
-let {Package, EGSError, guess-filepath, helper-names: standard-helper-names, make-template, make-helpers-factory, version: egs-runtime-version} = amd-require './runtime', 'egs-runtime', 'EGSRuntime'
+let egs-runtime = amd-require './runtime', 'egs-runtime', 'EGSRuntime'
+let {Package, EGSError, guess-filepath, helper-names: standard-helper-names, make-template, make-helpers-factory, version: egs-runtime-version} = egs-runtime
 if egs-runtime-version != __VERSION__
   throw Error "EGS and its runtime must have the same version: '$(__VERSION__)' vs. '$egs-runtime-version'"
 let gorillascript = amd-require 'gorillascript', 'gorillascript', 'GorillaScript'
@@ -444,10 +446,7 @@ let compile = promise! #(egs-code as String, compile-options as {}, helper-names
  * relevant parts needed for compilation, i.e. not any context-specific data.
  */
 let make-cache-key(options) as String
-  let parts = []
-  for key in [\open, \open-write, \open-comment, \open-literal, \close, \close-write, \close-comment, \close-literal, \cache, \prelude]
-    parts.push options[key] or "\0"
-  parts.join "\0"
+  """$(options.open or '\0')\0$(options.open-write or '\0')\0$(options.open-comment or '\0')\0$(options.open-literal or '\0')\0$(options.close or '\0')\0$(options.close-write or '\0')\0$(options.close-comment or '\0')\0$(options.close-literal or '\0')\0$(String options.cache)\0$(options.prelude or '\0')"""
 
 let return-same(value) # value
 
@@ -562,7 +561,7 @@ let compile-template-from-text-or-file(is-filepath as Boolean, mutable egs-code-
     else
       return-same compile egs-code-or-filepath, compile-options, helper-names
     make-helpers-factory options, #(name, current-filepath)
-      find-and-compile-file name, current-filepath, compile-options, helper-names
+      find-and-compile-file.maybe-sync name, current-filepath, compile-options, helper-names
     if is-filepath
       options.cache
     else
@@ -797,6 +796,23 @@ let compile-package = promise! #(input-dirpath as String, output-filepath as Str
     ast-pipe: full-ast-pipe
   }
 
+let package-from-directory = promise! #(input-dirpath as String, options = {})* as Promise<Package>
+  let tmp-name = "egs-package-$(new Date().get-time())-$(Math.random().to-string(36).slice(2)).js"
+  let tmp-path = path.join os.tmpdir(), tmp-name
+  yield compile-package input-dirpath, tmp-path, options
+  
+  let js-code = yield to-promise! fs.read-file tmp-path, 'utf8'
+  yield to-promise! fs.unlink tmp-path
+  
+  let sandbox = { EGSRuntime: egs-runtime }
+  Function(js-code).call(sandbox)
+  
+  let templates = sandbox.EGSTemplates
+  if templates not instanceof Package
+    throw Error "Package did not build successfully"
+  
+  templates
+
 module.exports := compile-template <<< {
   version: __VERSION__
   from-file: compile-template-from-file
@@ -806,6 +822,7 @@ module.exports := compile-template <<< {
   render-file-stream
   with-egs-prelude
   compile-package
+  package-from-directory
   Package
   EGSError
   compile(egs-code as String = "", options = {}, helper-names = [])

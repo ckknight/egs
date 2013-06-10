@@ -1015,8 +1015,8 @@
             if (version && typeof version === "object" && version !== null) {
               return Package.call(_this, null, version);
             }
-            if (version && version !== "0.2.1") {
-              throw Error("EGS Packages must be compiled with the same version as the EGS runtime: '" + version + "' vs. '0.2.1'");
+            if (version && version !== "0.2.2") {
+              throw Error("EGS Packages must be compiled with the same version as the EGS runtime: '" + version + "' vs. '0.2.2'");
             }
             _this.factories = {};
             _this.templates = {};
@@ -1201,7 +1201,7 @@
           };
         }
         module.exports = {
-          version: "0.2.1",
+          version: "0.2.2",
           Package: Package,
           EGSError: EGSError,
           makeTemplate: makeTemplate,

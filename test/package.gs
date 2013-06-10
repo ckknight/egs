@@ -192,27 +192,27 @@ describe "package", #
       expect(value).to.equal "Hello, world!"
       cb()
 
+let run-package-tests(templates)
+  expect(templates).to.be.an.instanceof egs-runtime.Package
+  expect(templates.render-sync "hello.egs", name: "world")
+    .to.equal "Hello, world!"
+  expect(templates.render-sync "use-partial.egs", partial-name: "quote-text", partial-locals: { text: "Hello" })
+    .to.equal '["Hello"]'
+  expect(templates.render-sync "use-layout.egs")
+    .to.equal """
+      header[Overridden header]
+      body[Overridden body]
+      footer[Default footer]
+      """
+  expect(templates.render-sync "use-sublayout.egs")
+    .to.equal """
+      header[Overridden header]
+      body[sub-body[Overridden sub-body]]
+      footer[Default footer]
+      """
 describe "compile-package", #
   let egs = require '../index'
   describe "can package a folder into a single js file which creates a Package", #
-    let run-package-tests(templates)
-      expect(templates).to.be.an.instanceof egs-runtime.Package
-      expect(templates.render-sync "hello.egs", name: "world")
-        .to.equal "Hello, world!"
-      expect(templates.render-sync "use-partial.egs", partial-name: "quote-text", partial-locals: { text: "Hello" })
-        .to.equal '["Hello"]'
-      expect(templates.render-sync "use-layout.egs")
-        .to.equal """
-          header[Overridden header]
-          body[Overridden body]
-          footer[Default footer]
-          """
-      expect(templates.render-sync "use-sublayout.egs")
-        .to.equal """
-          header[Overridden header]
-          body[sub-body[Overridden sub-body]]
-          footer[Default footer]
-          """
     it "in a browser-like environment (eval'd code with custom global)", #
       let tmp-package-js = path.join(fs.realpath-sync(os.tmpdir()), "egs-package.js")
       promise!
@@ -262,3 +262,11 @@ describe "compile-package", #
         """)().call sandbox, define
         run-package-tests definition
         expect(sandbox).to.be.empty
+
+describe "package-from-directory", #
+  let egs = require '../index'
+  it "can create a Package from a directory", #
+    promise!
+      let templates = yield egs.package-from-directory("$__dirname/fixtures")
+      
+      run-package-tests templates

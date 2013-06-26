@@ -26,7 +26,7 @@
             findAndCompileFile, fs, getAstPipe, getPreludeMacros, gorillascript,
             guessFilepath, makeHelpersFactory, makeTemplate, os, Package,
             packageFromDirectory, path, render, renderFile, setImmediate,
-            standardHelperNames, withEgsPrelude;
+            standardHelperNames, withEgsPrelude, wrapModule_resolveFilename;
         __defer = (function () {
           function __defer() {
             var deferred, isError, value;
@@ -61,6 +61,7 @@
                   promise = _ref.promise;
                   fulfill = _ref.fulfill;
                   reject = _ref.reject;
+                  _ref = null;
                   function step() {
                     var f, result;
                     try {
@@ -99,19 +100,19 @@
                   this.then(
                     function (ret) {
                       state = 1;
-                      return result = ret;
+                      result = ret;
                     },
                     function (err) {
                       state = 2;
-                      return result = err;
+                      result = err;
                     },
                     true
                   );
                   switch (state) {
-                  case 0: throw Error("Promise did not execute synchronously");
+                  case 0: throw new Error("Promise did not execute synchronously");
                   case 1: return result;
                   case 2: throw result;
-                  default: throw Error("Unknown state");
+                  default: throw new Error("Unknown state");
                   }
                 }
               },
@@ -139,11 +140,14 @@
         }());
         __fromPromise = function (promise) {
           if (typeof promise !== "object" || promise === null) {
-            throw TypeError("Expected promise to be an Object, got " + __typeof(promise));
+            throw new TypeError("Expected promise to be an Object, got " + __typeof(promise));
           } else if (typeof promise.then !== "function") {
-            throw TypeError("Expected promise.then to be a Function, got " + __typeof(promise.then));
+            throw new TypeError("Expected promise.then to be a Function, got " + __typeof(promise.then));
           }
           return function (callback) {
+            if (typeof callback !== "function") {
+              throw new TypeError("Expected callback to be a Function, got " + __typeof(callback));
+            }
             promise.then(
               function (value) {
                 return setImmediate(callback, null, value);
@@ -156,19 +160,19 @@
         };
         __generatorToPromise = function (generator, allowSync) {
           if (typeof generator !== "object" || generator === null) {
-            throw TypeError("Expected generator to be an Object, got " + __typeof(generator));
+            throw new TypeError("Expected generator to be an Object, got " + __typeof(generator));
           } else {
             if (typeof generator.send !== "function") {
-              throw TypeError("Expected generator.send to be a Function, got " + __typeof(generator.send));
+              throw new TypeError("Expected generator.send to be a Function, got " + __typeof(generator.send));
             }
             if (typeof generator["throw"] !== "function") {
-              throw TypeError("Expected generator.throw to be a Function, got " + __typeof(generator["throw"]));
+              throw new TypeError("Expected generator.throw to be a Function, got " + __typeof(generator["throw"]));
             }
           }
           if (allowSync == null) {
             allowSync = false;
           } else if (typeof allowSync !== "boolean") {
-            throw TypeError("Expected allowSync to be a Boolean, got " + __typeof(allowSync));
+            throw new TypeError("Expected allowSync to be a Boolean, got " + __typeof(allowSync));
           }
           function continuer(verb, arg) {
             var item;
@@ -201,13 +205,11 @@
           return dest;
         };
         __in = typeof Array.prototype.indexOf === "function"
-          ? (function () {
-            var indexOf;
-            indexOf = Array.prototype.indexOf;
+          ? (function (indexOf) {
             return function (child, parent) {
               return indexOf.call(parent, child) !== -1;
             };
-          }())
+          }(Array.prototype.indexOf))
           : function (child, parent) {
             var i, len;
             len = +parent.length;
@@ -220,20 +222,18 @@
             return false;
           };
         __isArray = typeof Array.isArray === "function" ? Array.isArray
-          : (function () {
-            var _toString;
-            _toString = Object.prototype.toString;
+          : (function (_toString) {
             return function (x) {
               return _toString.call(x) === "[object Array]";
             };
-          }());
+          }(Object.prototype.toString));
         __owns = Object.prototype.hasOwnProperty;
         __promise = function (value, allowSync) {
           var factory;
           if (allowSync == null) {
             allowSync = false;
           } else if (typeof allowSync !== "boolean") {
-            throw TypeError("Expected allowSync to be a Boolean, got " + __typeof(allowSync));
+            throw new TypeError("Expected allowSync to be a Boolean, got " + __typeof(allowSync));
           }
           if (typeof value === "function") {
             factory = function () {
@@ -257,15 +257,15 @@
           }
         };
         __promiseLoop = function (limit, length, body) {
-          var defer, done, index, result, slotsUsed;
+          var _ref, done, fulfill, index, promise, reject, result, slotsUsed;
           if (typeof limit !== "number") {
-            throw TypeError("Expected limit to be a Number, got " + __typeof(limit));
+            throw new TypeError("Expected limit to be a Number, got " + __typeof(limit));
           }
           if (typeof length !== "number") {
-            throw TypeError("Expected length to be a Number, got " + __typeof(length));
+            throw new TypeError("Expected length to be a Number, got " + __typeof(length));
           }
           if (typeof body !== "function") {
-            throw TypeError("Expected body to be a Function, got " + __typeof(body));
+            throw new TypeError("Expected body to be a Function, got " + __typeof(body));
           }
           if (limit < 1 || limit !== limit) {
             limit = 1/0;
@@ -273,7 +273,11 @@
           result = [];
           done = false;
           slotsUsed = 0;
-          defer = __defer();
+          _ref = __defer();
+          fulfill = _ref.fulfill;
+          reject = _ref.reject;
+          promise = _ref.promise;
+          _ref = null;
           index = 0;
           function handle(index) {
             ++slotsUsed;
@@ -285,7 +289,7 @@
               },
               function (reason) {
                 done = true;
-                return defer.reject(reason);
+                return reject(reason);
               }
             );
           }
@@ -295,16 +299,16 @@
             }
             if (!done && index >= length && slotsUsed === 0) {
               done = true;
-              return defer.fulfill(result);
+              return fulfill(result);
             }
           }
           setImmediate(flush);
-          return defer.promise;
+          return promise;
         };
         __slice = Array.prototype.slice;
         __toArray = function (x) {
           if (x == null) {
-            throw TypeError("Expected an object, got " + __typeof(x));
+            throw new TypeError("Expected an object, got " + __typeof(x));
           } else if (__isArray(x)) {
             return x;
           } else if (typeof x === "string") {
@@ -312,13 +316,13 @@
           } else if (typeof x.length === "number") {
             return __slice.call(x);
           } else {
-            throw TypeError("Expected an object with a length property, got " + __typeof(x));
+            throw new TypeError("Expected an object with a length property, got " + __typeof(x));
           }
         };
         __toPromise = function (func, context, args) {
           var d;
           if (typeof func !== "function") {
-            throw TypeError("Expected func to be a Function, got " + __typeof(func));
+            throw new TypeError("Expected func to be a Function, got " + __typeof(func));
           }
           d = __defer();
           func.apply(context, __toArray(args).concat([
@@ -347,13 +351,11 @@
         }());
         setImmediate = typeof GLOBAL.setImmediate === "function" ? GLOBAL.setImmediate
           : typeof process !== "undefined" && typeof process.nextTick === "function"
-          ? (function () {
-            var nextTick;
-            nextTick = process.nextTick;
+          ? (function (nextTick) {
             return function (func) {
               var args;
               if (typeof func !== "function") {
-                throw TypeError("Expected func to be a Function, got " + __typeof(func));
+                throw new TypeError("Expected func to be a Function, got " + __typeof(func));
               }
               args = __slice.call(arguments, 1);
               if (args.length) {
@@ -364,17 +366,17 @@
                 return nextTick(func);
               }
             };
-          }())
+          }(process.nextTick))
           : function (func) {
             var args;
             if (typeof func !== "function") {
-              throw TypeError("Expected func to be a Function, got " + __typeof(func));
+              throw new TypeError("Expected func to be a Function, got " + __typeof(func));
             }
             args = __slice.call(arguments, 1);
             if (args.length) {
               return setTimeout(
                 function () {
-                  func.apply(void 0, __toArray(args));
+                  func.apply(void 0, args);
                 },
                 0
               );
@@ -395,11 +397,11 @@
           } else if (typeof root === "object" && root !== null) {
             library = root[globalName];
             if (!library) {
-              throw Error(globalName + " must be available before EGS is loaded");
+              throw new Error(globalName + " must be available before EGS is loaded");
             }
             return library;
           } else {
-            throw Error("Unable to detect runtime environment of EGS");
+            throw new Error("Unable to detect runtime environment of EGS");
           }
         }
         egsRuntime = amdRequire("./runtime", "egs-runtime", "EGSRuntime");
@@ -410,8 +412,8 @@
         makeTemplate = egsRuntime.makeTemplate;
         makeHelpersFactory = egsRuntime.makeHelpersFactory;
         egsRuntimeVersion = egsRuntime.version;
-        if (egsRuntimeVersion !== "0.2.2") {
-          throw Error("EGS and its runtime must have the same version: '0.2.2' vs. '" + egsRuntimeVersion + "'");
+        if (egsRuntimeVersion !== "0.3.0") {
+          throw new Error("EGS and its runtime must have the same version: '0.3.0' vs. '" + egsRuntimeVersion + "'");
         }
         gorillascript = amdRequire("gorillascript", "gorillascript", "GorillaScript");
         function memoize(func) {
@@ -457,7 +459,7 @@
                   return { done: true, value: result.macros };
                 case 5:
                   return { done: true, value: void 0 };
-                default: throw Error("Unknown state: " + _state);
+                default: throw new Error("Unknown state: " + _state);
                 }
               }
             }
@@ -497,8 +499,8 @@
               egsPreludeP = getEgsPreludeP();
               if (!preludePath) {
                 return egsPreludeP;
-              } else if (!__owns.call(preludePathCache, preludePath)) {
-                return preludePathCache[preludePath] = __generatorToPromise((function () {
+              } else {
+                return preludePathCache[preludePath] || (preludePathCache[preludePath] = __generatorToPromise((function () {
                   var _e, _send, _state, _step, _throw, egsPrelude, result, text;
                   _state = 0;
                   function _close() {
@@ -530,7 +532,7 @@
                         return { done: true, value: result.macros };
                       case 4:
                         return { done: true, value: void 0 };
-                      default: throw Error("Unknown state: " + _state);
+                      default: throw new Error("Unknown state: " + _state);
                       }
                     }
                   }
@@ -559,9 +561,7 @@
                       return _send(void 0);
                     }
                   };
-                }()));
-              } else {
-                return preludePathCache[preludePath];
+                }())));
               }
             },
             function (code) {
@@ -572,6 +572,7 @@
         }());
         getPreludeMacros = _ref[0];
         withEgsPrelude = _ref[1];
+        _ref = null;
         getAstPipe = (function () {
           var ast;
           ast = gorillascript.AST;
@@ -701,8 +702,7 @@
               changed = false;
               for (_arr = __toArray(body), i = 0, _len = _arr.length; i < _len; ++i) {
                 subnode = _arr[i];
-                newSubnode = subnode.walkWithThis(mergeWrites);
-                body[i] = newSubnode;
+                body[i] = newSubnode = subnode.walkWithThis(mergeWrites);
                 if (newSubnode !== subnode) {
                   changed = true;
                 }
@@ -884,9 +884,18 @@
               }
             }
           }
+          function remove__generatorWrap(node, parent) {
+            var subnode;
+            if (isCall(node, "__generator")) {
+              subnode = node.args[0];
+              if (subnode instanceof ast.Func && subnode.params.length === 3 && subnode.params[0].name === "write" && subnode.params[1].name === "context" && subnode.params[2].name === "helpers") {
+                return subnode;
+              }
+            }
+          }
           return function (helperNames) {
             return function (root) {
-              return root.walk(convertWriteCallToWrite).walk(convertWriteTrueToWriteEscape).walk(unwrapEscapeH).walk(mergeWrites).walk(removeWritesAfterExtends).walk(convertWriteToStringConcat).walk(convertLastWrite).walk(removeContextNullCheck).walk(changeContextToHelpers(helperNames)).walk(addHelpersToParams).walk(addFlushToGeneratorReturn);
+              return root.walk(convertWriteCallToWrite).walk(convertWriteTrueToWriteEscape).walk(unwrapEscapeH).walk(mergeWrites).walk(removeWritesAfterExtends).walk(convertWriteToStringConcat).walk(convertLastWrite).walk(removeContextNullCheck).walk(changeContextToHelpers(helperNames)).walk(addHelpersToParams).walk(addFlushToGeneratorReturn).walk(remove__generatorWrap);
             };
           };
         }());
@@ -946,7 +955,7 @@
                 };
               case 7:
                 return { done: true, value: void 0 };
-              default: throw Error("Unknown state: " + _state);
+              default: throw new Error("Unknown state: " + _state);
               }
             }
           }
@@ -1033,6 +1042,7 @@
                 _ref = _received;
                 isGenerator = _ref.isGenerator;
                 code = _ref.code;
+                _ref = null;
                 ++_state;
                 return {
                   done: true,
@@ -1041,7 +1051,7 @@
                       ? (factory = Function("return " + code)(), promiseFactory = __promise(factory), promiseFactory.stream = function (streamSend) {
                         var args, generator;
                         args = __slice.call(arguments, 1);
-                        generator = factory.apply(this, __toArray(args));
+                        generator = factory.apply(this, args);
                         if (generator.flush) {
                           return generatorToPromiseWithStreaming(generator, streamSend);
                         } else {
@@ -1065,7 +1075,7 @@
                 };
               case 2:
                 return { done: true, value: void 0 };
-              default: throw Error("Unknown state: " + _state);
+              default: throw new Error("Unknown state: " + _state);
               }
             }
           }
@@ -1108,19 +1118,74 @@
           cache = {};
           return function (filepath, compileOptions, helperNames) {
             var _ref, innerCache;
-            if (__owns.call(cache, filepath)) {
-              innerCache = cache[filepath];
-            } else {
-              innerCache = cache[filepath] = {};
-            }
-            if (!__owns.call(innerCache, _ref = makeCacheKey(compileOptions) + "\u0000" + helperNames.join("\u0000"))) {
-              return innerCache[_ref] = (function () {
-                var currentCompilationP, currentTimeP, recompileFile, retime;
-                recompileFile = __promise(function () {
-                  var _e, _send, _state, _step, _throw, egsCode;
+            innerCache = cache[filepath] || (cache[filepath] = {});
+            return innerCache[_ref = makeCacheKey(compileOptions) + "\u0000" + helperNames.join("\u0000")] || (innerCache[_ref] = (function () {
+              var currentCompilationP, currentTimeP, recompileFile, retime;
+              recompileFile = __promise(function () {
+                var _e, _send, _state, _step, _throw, egsCode;
+                _state = 0;
+                function _close() {
+                  _state = 3;
+                }
+                function _step(_received) {
+                  while (true) {
+                    switch (_state) {
+                    case 0:
+                      ++_state;
+                      return {
+                        done: false,
+                        value: __toPromise(fs.readFile, fs, [filepath, "utf8"])
+                      };
+                    case 1:
+                      egsCode = _received;
+                      ++_state;
+                      return {
+                        done: false,
+                        value: compile(egsCode, compileOptions, helperNames)
+                      };
+                    case 2:
+                      ++_state;
+                      return { done: true, value: _received };
+                    case 3:
+                      return { done: true, value: void 0 };
+                    default: throw new Error("Unknown state: " + _state);
+                    }
+                  }
+                }
+                function _throw(_e) {
+                  _close();
+                  throw _e;
+                }
+                function _send(_received) {
+                  try {
+                    return _step(_received);
+                  } catch (_e) {
+                    _throw(_e);
+                  }
+                }
+                return {
+                  close: _close,
+                  iterator: function () {
+                    return this;
+                  },
+                  next: function () {
+                    return _send(void 0);
+                  },
+                  send: _send,
+                  "throw": function (_e) {
+                    _throw(_e);
+                    return _send(void 0);
+                  }
+                };
+              });
+              if (compileOptions.cache) {
+                return returnSame(recompileFile());
+              } else {
+                retime = __promise(function () {
+                  var _e, _send, _state, _step, _throw, stat;
                   _state = 0;
                   function _close() {
-                    _state = 3;
+                    _state = 2;
                   }
                   function _step(_received) {
                     while (true) {
@@ -1129,21 +1194,15 @@
                         ++_state;
                         return {
                           done: false,
-                          value: __toPromise(fs.readFile, fs, [filepath, "utf8"])
+                          value: __toPromise(fs.stat, fs, [filepath])
                         };
                       case 1:
-                        egsCode = _received;
+                        stat = _received;
                         ++_state;
-                        return {
-                          done: false,
-                          value: compile(egsCode, compileOptions, helperNames)
-                        };
+                        return { done: true, value: stat.mtime.getTime() };
                       case 2:
-                        ++_state;
-                        return { done: true, value: _received };
-                      case 3:
                         return { done: true, value: void 0 };
-                      default: throw Error("Unknown state: " + _state);
+                      default: throw new Error("Unknown state: " + _state);
                       }
                     }
                   }
@@ -1173,127 +1232,70 @@
                     }
                   };
                 });
-                if (compileOptions.cache) {
-                  return returnSame(recompileFile());
-                } else {
-                  retime = __promise(function () {
-                    var _e, _send, _state, _step, _throw, stat;
-                    _state = 0;
-                    function _close() {
-                      _state = 2;
-                    }
-                    function _step(_received) {
-                      while (true) {
-                        switch (_state) {
-                        case 0:
-                          ++_state;
-                          return {
-                            done: false,
-                            value: __toPromise(fs.stat, fs, [filepath])
-                          };
-                        case 1:
-                          stat = _received;
-                          ++_state;
-                          return { done: true, value: stat.mtime.getTime() };
-                        case 2:
-                          return { done: true, value: void 0 };
-                        default: throw Error("Unknown state: " + _state);
+                currentCompilationP = recompileFile();
+                currentTimeP = retime();
+                return __promise(function () {
+                  var _e, _send, _state, _step, _throw, _tmp, newTimeP;
+                  _state = 0;
+                  function _close() {
+                    _state = 4;
+                  }
+                  function _step(_received) {
+                    while (true) {
+                      switch (_state) {
+                      case 0:
+                        newTimeP = retime();
+                        ++_state;
+                        return { done: false, value: currentTimeP };
+                      case 1:
+                        _tmp = _received;
+                        ++_state;
+                        return { done: false, value: newTimeP };
+                      case 2:
+                        _tmp = _tmp !== _received;
+                        if (_tmp) {
+                          currentCompilationP = recompileFile();
+                          currentTimeP = newTimeP;
                         }
+                        ++_state;
+                        return { done: false, value: currentCompilationP };
+                      case 3:
+                        ++_state;
+                        return { done: true, value: _received };
+                      case 4:
+                        return { done: true, value: void 0 };
+                      default: throw new Error("Unknown state: " + _state);
                       }
                     }
-                    function _throw(_e) {
-                      _close();
-                      throw _e;
+                  }
+                  function _throw(_e) {
+                    _close();
+                    throw _e;
+                  }
+                  function _send(_received) {
+                    try {
+                      return _step(_received);
+                    } catch (_e) {
+                      _throw(_e);
                     }
-                    function _send(_received) {
-                      try {
-                        return _step(_received);
-                      } catch (_e) {
-                        _throw(_e);
-                      }
+                  }
+                  return {
+                    close: _close,
+                    iterator: function () {
+                      return this;
+                    },
+                    next: function () {
+                      return _send(void 0);
+                    },
+                    send: _send,
+                    "throw": function (_e) {
+                      _throw(_e);
+                      return _send(void 0);
                     }
-                    return {
-                      close: _close,
-                      iterator: function () {
-                        return this;
-                      },
-                      next: function () {
-                        return _send(void 0);
-                      },
-                      send: _send,
-                      "throw": function (_e) {
-                        _throw(_e);
-                        return _send(void 0);
-                      }
-                    };
-                  });
-                  currentCompilationP = recompileFile();
-                  currentTimeP = retime();
-                  return __promise(function () {
-                    var _e, _send, _state, _step, _throw, _tmp, newTimeP;
-                    _state = 0;
-                    function _close() {
-                      _state = 4;
-                    }
-                    function _step(_received) {
-                      while (true) {
-                        switch (_state) {
-                        case 0:
-                          newTimeP = retime();
-                          ++_state;
-                          return { done: false, value: currentTimeP };
-                        case 1:
-                          _tmp = _received;
-                          ++_state;
-                          return { done: false, value: newTimeP };
-                        case 2:
-                          _tmp = _tmp !== _received;
-                          if (_tmp) {
-                            currentCompilationP = recompileFile();
-                            currentTimeP = newTimeP;
-                          }
-                          ++_state;
-                          return { done: false, value: currentCompilationP };
-                        case 3:
-                          ++_state;
-                          return { done: true, value: _received };
-                        case 4:
-                          return { done: true, value: void 0 };
-                        default: throw Error("Unknown state: " + _state);
-                        }
-                      }
-                    }
-                    function _throw(_e) {
-                      _close();
-                      throw _e;
-                    }
-                    function _send(_received) {
-                      try {
-                        return _step(_received);
-                      } catch (_e) {
-                        _throw(_e);
-                      }
-                    }
-                    return {
-                      close: _close,
-                      iterator: function () {
-                        return this;
-                      },
-                      next: function () {
-                        return _send(void 0);
-                      },
-                      send: _send,
-                      "throw": function (_e) {
-                        _throw(_e);
-                        return _send(void 0);
-                      }
-                    };
-                  });
-                }
-              }());
-            } else {
-              return innerCache[_ref];
-            }
+                  };
+                });
+              }
+            }()));
           };
         }());
         findAndCompileFile = __promise(function (name, fromFilepath, compileOptions, helperNames) {
@@ -1324,7 +1326,7 @@
                 };
               case 2:
                 return { done: true, value: void 0 };
-              default: throw Error("Unknown state: " + _state);
+              default: throw new Error("Unknown state: " + _state);
               }
             }
           }
@@ -1469,7 +1471,7 @@
                 return { done: true, value: _received };
               case 2:
                 return { done: true, value: void 0 };
-              default: throw Error("Unknown state: " + _state);
+              default: throw new Error("Unknown state: " + _state);
               }
             }
           }
@@ -1543,7 +1545,7 @@
                 return { done: true, value: _received };
               case 2:
                 return { done: true, value: void 0 };
-              default: throw Error("Unknown state: " + _state);
+              default: throw new Error("Unknown state: " + _state);
               }
             }
           }
@@ -1660,7 +1662,7 @@
                           return { done: true, value: result.push(joinedPath) };
                         case 6:
                           return { done: true, value: void 0 };
-                        default: throw Error("Unknown state: " + _state2);
+                        default: throw new Error("Unknown state: " + _state2);
                         }
                       }
                     }
@@ -1696,7 +1698,7 @@
                 return { done: true, value: result.sort() };
               case 3:
                 return { done: true, value: void 0 };
-              default: throw Error("Unknown state: " + _state);
+              default: throw new Error("Unknown state: " + _state);
               }
             }
           }
@@ -1727,11 +1729,191 @@
           };
         });
         compilePackage = __promise(function (inputDirpath, outputFilepath, options) {
-          var _e, _send, _state, _step, _throw, astPipe, dirstat, fullAstPipe,
-              inputFilepaths, macros;
+          var _e, _send, _state, _step, _throw, astPipe, dirstat, inputFilepaths,
+              macros;
           _state = 0;
           function _close() {
             _state = 5;
+          }
+          function fullAstPipe(root, _p, ast) {
+            var filesAssigned;
+            filesAssigned = {};
+            function isDoWrap(node) {
+              var _ref;
+              return node instanceof ast.Call && (node.func instanceof ast.Func || node.func instanceof ast.Binary && node.func.op === "." && node.func.left instanceof ast.Func && node.func.right.isConst() && ((_ref = node.func.right.constValue()) === "call" || _ref === "apply"));
+            }
+            function unwrapDoWrap(node) {
+              while (isDoWrap(node)) {
+                if (node.func instanceof ast.Func) {
+                  node = node.func.body;
+                } else {
+                  node = node.func.left.body;
+                }
+              }
+              return node;
+            }
+            function lastNode(node) {
+              var _ref;
+              if (node instanceof ast.BlockStatement || node instanceof ast.BlockExpression) {
+                return (_ref = node.body)[_ref.length - 1];
+              } else {
+                return node;
+              }
+            }
+            function isReturningGenerator(node) {
+              var funcReturn;
+              node = lastNode(unwrapDoWrap(node));
+              if (node instanceof ast.Return && node.node instanceof ast.Func) {
+                funcReturn = lastNode(unwrapDoWrap(node.node.body));
+                if (funcReturn instanceof ast.Return && !(funcReturn.node instanceof ast.Obj)) {
+                  return false;
+                }
+              }
+              return true;
+            }
+            function assignFiles(node) {
+              if (node.pos.file && !__owns.call(filesAssigned, node.pos.file) && isDoWrap(node)) {
+                filesAssigned[node.pos.file] = true;
+                return ast.Call(
+                  node.pos,
+                  ast.Access(
+                    node.pos,
+                    ast.Ident(node.pos, "templates"),
+                    ast.Const(node.pos, isReturningGenerator(node) ? "set" : "setSimple")
+                  ),
+                  [
+                    ast.Const(node.pos, path.relative(inputDirpath, node.pos.file)),
+                    node
+                  ]
+                );
+              }
+            }
+            root = astPipe(root).walk(assignFiles);
+            return ast.Root(
+              root.pos,
+              ast.Call(
+                root.pos,
+                ast.Access(
+                  root.pos,
+                  ast.Func(
+                    root.pos,
+                    null,
+                    [ast.Ident(root.pos, "factory")],
+                    [],
+                    ast.IfStatement(
+                      root.pos,
+                      ast.And(
+                        root.pos,
+                        ast.Binary(
+                          root.pos,
+                          ast.Unary(root.pos, "typeof", ast.Ident(root.pos, "module")),
+                          "!==",
+                          ast.Const(root.pos, "undefined")
+                        ),
+                        ast.Access(
+                          root.pos,
+                          ast.Ident(root.pos, "module"),
+                          ast.Const(root.pos, "exports")
+                        )
+                      ),
+                      ast.Assign(
+                        root.pos,
+                        ast.Access(
+                          root.pos,
+                          ast.Ident(root.pos, "module"),
+                          ast.Const(root.pos, "exports")
+                        ),
+                        ast.Call(
+                          root.pos,
+                          ast.Ident(root.pos, "factory"),
+                          [
+                            ast.Call(
+                              root.pos,
+                              ast.Ident(root.pos, "require"),
+                              [ast.Const(root.pos, "egs")]
+                            )
+                          ]
+                        )
+                      ),
+                      ast.IfStatement(
+                        root.pos,
+                        ast.And(
+                          root.pos,
+                          ast.Binary(
+                            root.pos,
+                            ast.Unary(root.pos, "typeof", ast.Ident(root.pos, "define")),
+                            "===",
+                            ast.Const(root.pos, "function")
+                          ),
+                          ast.Access(
+                            root.pos,
+                            ast.Ident(root.pos, "define"),
+                            ast.Const(root.pos, "amd")
+                          )
+                        ),
+                        ast.Call(
+                          root.pos,
+                          ast.Ident(root.pos, "define"),
+                          [
+                            ast.Arr(root.pos, [ast.Const(root.pos, "egs-runtime")]),
+                            ast.Ident(root.pos, "factory")
+                          ]
+                        ),
+                        ast.Assign(
+                          root.pos,
+                          ast.Access(root.pos, ast.This(root.pos), ast.Const(root.pos, options.globalExport || "EGSTemplates")),
+                          ast.Call(
+                            root.pos,
+                            ast.Ident(root.pos, "factory"),
+                            [
+                              ast.Access(root.pos, ast.This(root.pos), ast.Const(root.pos, "EGSRuntime"))
+                            ]
+                          )
+                        )
+                      )
+                    )
+                  ),
+                  ast.Const(root.pos, "call")
+                ),
+                [
+                  ast.This(root.pos),
+                  ast.Func(
+                    root.pos,
+                    null,
+                    [ast.Ident(root.pos, "EGSRuntime")],
+                    ["templates"],
+                    ast.Block(root.pos, [
+                      ast.IfStatement(
+                        root.pos,
+                        ast.Unary(root.pos, "!", ast.Ident(root.pos, "EGSRuntime")),
+                        ast.Throw(root.pos, ast.Call(
+                          root.pos,
+                          ast.Ident(root.pos, "Error"),
+                          [ast.Const(root.pos, "Expected EGSRuntime to be available")]
+                        ))
+                      ),
+                      ast.Assign(
+                        root.pos,
+                        ast.Ident(root.pos, "templates"),
+                        ast.Call(
+                          root.pos,
+                          ast.Access(
+                            root.pos,
+                            ast.Ident(root.pos, "EGSRuntime"),
+                            ast.Const(root.pos, "Package")
+                          ),
+                          [ast.Const(root.pos, "0.3.0")]
+                        )
+                      ),
+                      root.body,
+                      ast.Return(root.pos, ast.Ident(root.pos, "templates"))
+                    ])
+                  )
+                ]
+              ),
+              [],
+              []
+            );
           }
           function _step(_received) {
             while (true) {
@@ -1748,7 +1930,7 @@
               case 1:
                 dirstat = _received;
                 if (!dirstat.isDirectory()) {
-                  throw Error("Expected '" + inputDirpath + "' to be a directory.");
+                  throw new Error("Expected '" + inputDirpath + "' to be a directory.");
                 }
                 ++_state;
                 return {
@@ -1762,157 +1944,6 @@
               case 3:
                 macros = _received;
                 astPipe = getAstPipe(getHelperNames({}));
-                fullAstPipe = function (root, _p, ast) {
-                  var filesAssigned;
-                  filesAssigned = {};
-                  function isDoWrap(node) {
-                    var _ref;
-                    return node instanceof ast.Call && (node.func instanceof ast.Func || node.func instanceof ast.Binary && node.func.op === "." && node.func.left instanceof ast.Func && node.func.right.isConst() && ((_ref = node.func.right.constValue()) === "call" || _ref === "apply"));
-                  }
-                  function assignFiles(node) {
-                    if (node.pos.file && !__owns.call(filesAssigned, node.pos.file) && isDoWrap(node)) {
-                      filesAssigned[node.pos.file] = true;
-                      return ast.Call(
-                        node.pos,
-                        ast.Access(
-                          node.pos,
-                          ast.Ident(node.pos, "templates"),
-                          ast.Const(node.pos, "set")
-                        ),
-                        [
-                          ast.Const(node.pos, path.relative(inputDirpath, node.pos.file)),
-                          node
-                        ]
-                      );
-                    }
-                  }
-                  root = astPipe(root).walk(assignFiles);
-                  return ast.Root(
-                    root.pos,
-                    ast.Call(
-                      root.pos,
-                      ast.Access(
-                        root.pos,
-                        ast.Func(
-                          root.pos,
-                          null,
-                          [ast.Ident(root.pos, "factory")],
-                          [],
-                          ast.IfStatement(
-                            root.pos,
-                            ast.And(
-                              root.pos,
-                              ast.Binary(
-                                root.pos,
-                                ast.Unary(root.pos, "typeof", ast.Ident(root.pos, "module")),
-                                "!==",
-                                ast.Const(root.pos, "undefined")
-                              ),
-                              ast.Access(
-                                root.pos,
-                                ast.Ident(root.pos, "module"),
-                                ast.Const(root.pos, "exports")
-                              )
-                            ),
-                            ast.Assign(
-                              root.pos,
-                              ast.Access(
-                                root.pos,
-                                ast.Ident(root.pos, "module"),
-                                ast.Const(root.pos, "exports")
-                              ),
-                              ast.Call(
-                                root.pos,
-                                ast.Ident(root.pos, "factory"),
-                                [
-                                  ast.Call(
-                                    root.pos,
-                                    ast.Ident(root.pos, "require"),
-                                    [ast.Const(root.pos, "egs")]
-                                  )
-                                ]
-                              )
-                            ),
-                            ast.IfStatement(
-                              root.pos,
-                              ast.And(
-                                root.pos,
-                                ast.Binary(
-                                  root.pos,
-                                  ast.Unary(root.pos, "typeof", ast.Ident(root.pos, "define")),
-                                  "===",
-                                  ast.Const(root.pos, "function")
-                                ),
-                                ast.Access(
-                                  root.pos,
-                                  ast.Ident(root.pos, "define"),
-                                  ast.Const(root.pos, "amd")
-                                )
-                              ),
-                              ast.Call(
-                                root.pos,
-                                ast.Ident(root.pos, "define"),
-                                [
-                                  ast.Arr(root.pos, [ast.Const(root.pos, "egs-runtime")]),
-                                  ast.Ident(root.pos, "factory")
-                                ]
-                              ),
-                              ast.Assign(
-                                root.pos,
-                                ast.Access(root.pos, ast.This(root.pos), ast.Const(root.pos, options.globalExport || "EGSTemplates")),
-                                ast.Call(
-                                  root.pos,
-                                  ast.Ident(root.pos, "factory"),
-                                  [
-                                    ast.Access(root.pos, ast.This(root.pos), ast.Const(root.pos, "EGSRuntime"))
-                                  ]
-                                )
-                              )
-                            )
-                          )
-                        ),
-                        ast.Const(root.pos, "call")
-                      ),
-                      [
-                        ast.This(root.pos),
-                        ast.Func(
-                          root.pos,
-                          null,
-                          [ast.Ident(root.pos, "EGSRuntime")],
-                          ["templates"],
-                          ast.Block(root.pos, [
-                            ast.IfStatement(
-                              root.pos,
-                              ast.Unary(root.pos, "!", ast.Ident(root.pos, "EGSRuntime")),
-                              ast.Throw(root.pos, ast.Call(
-                                root.pos,
-                                ast.Ident(root.pos, "Error"),
-                                [ast.Const(root.pos, "Expected EGSRuntime to be available")]
-                              ))
-                            ),
-                            ast.Assign(
-                              root.pos,
-                              ast.Ident(root.pos, "templates"),
-                              ast.Call(
-                                root.pos,
-                                ast.Access(
-                                  root.pos,
-                                  ast.Ident(root.pos, "EGSRuntime"),
-                                  ast.Const(root.pos, "Package")
-                                ),
-                                [ast.Const(root.pos, "0.2.2")]
-                              )
-                            ),
-                            root.body,
-                            ast.Return(root.pos, ast.Ident(root.pos, "templates"))
-                          ])
-                        )
-                      ]
-                    ),
-                    [],
-                    []
-                  );
-                };
                 ++_state;
                 return {
                   done: false,
@@ -1945,7 +1976,7 @@
                 return { done: true, value: _received };
               case 5:
                 return { done: true, value: void 0 };
-              default: throw Error("Unknown state: " + _state);
+              default: throw new Error("Unknown state: " + _state);
               }
             }
           }
@@ -1975,12 +2006,23 @@
             }
           };
         });
+        wrapModule_resolveFilename = memoize(function () {
+          var Module, old_resolveFilename;
+          Module = require("module");
+          old_resolveFilename = Module._resolveFilename;
+          return Module._resolveFilename = function (request, parent) {
+            if (request === "egs") {
+              return path.resolve(__dirname, "../index.js");
+            } else {
+              return old_resolveFilename.apply(this, arguments);
+            }
+          };
+        });
         packageFromDirectory = __promise(function (inputDirpath, options) {
-          var _e, _send, _state, _step, _throw, jsCode, sandbox, templates, tmpName,
-              tmpPath;
+          var _e, _send, _state, _step, _throw, templates, tmpName, tmpPath;
           _state = 0;
           function _close() {
-            _state = 4;
+            _state = 3;
           }
           function _step(_received) {
             while (true) {
@@ -1997,30 +2039,22 @@
                   value: compilePackage(inputDirpath, tmpPath, options)
                 };
               case 1:
-                ++_state;
-                return {
-                  done: false,
-                  value: __toPromise(fs.readFile, fs, [tmpPath, "utf8"])
-                };
-              case 2:
-                jsCode = _received;
+                wrapModule_resolveFilename();
+                templates = require(tmpPath);
+                if (!(templates instanceof Package)) {
+                  throw new Error("Package did not build successfully");
+                }
                 ++_state;
                 return {
                   done: false,
                   value: __toPromise(fs.unlink, fs, [tmpPath])
                 };
-              case 3:
-                sandbox = { EGSRuntime: egsRuntime };
-                Function(jsCode).call(sandbox);
-                templates = sandbox.EGSTemplates;
-                if (!(templates instanceof Package)) {
-                  throw Error("Package did not build successfully");
-                }
+              case 2:
                 ++_state;
                 return { done: true, value: templates };
-              case 4:
+              case 3:
                 return { done: true, value: void 0 };
-              default: throw Error("Unknown state: " + _state);
+              default: throw new Error("Unknown state: " + _state);
               }
             }
           }
@@ -2050,7 +2084,7 @@
             }
           };
         });
-        compileTemplate.version = "0.2.2";
+        compileTemplate.version = "0.3.0";
         compileTemplate.fromFile = compileTemplateFromFile;
         compileTemplate.render = render;
         compileTemplate.renderFile = renderFile;
@@ -2098,7 +2132,7 @@
       return module.exports;
     };
 
-    return require("./egs").withEgsPrelude("macro extends(name, locals)\n  let new-context = if locals and not locals.is-const()\n    ASTE {} <<< context <<< $locals\n  else\n    ASTE context\n  ASTE context.extends $name, $new-context\n\nmacro block\n  syntax ident as Identifier, body as GeneratorBody?\n    let name = @const @name(ident)\n    if body?\n      ASTE! write := yield context.block $name, first!(write, (write := '')), #(write)*\n        $body\n        write\n    else\n      ASTE! write := yield context.block $name, first!(write, (write := ''))\n\nmacro partial(name, locals)\n  let new-context = if locals and not locals.is-const()\n    ASTE {} <<< context <<< $locals\n  else\n    ASTE context\n  ASTE! write := yield context.partial $name, first!(write, (write := '')), $new-context\n");
+    return require("./egs").withEgsPrelude("macro extends(name, locals)\n  let new-context = if locals and not locals.is-const()\n    ASTE {} <<< context <<< $locals\n  else\n    ASTE context\n  ASTE context.extends $name, $new-context\n\nmacro block\n  syntax ident as Identifier, body as GeneratorBody?\n    let name = @const ident.name\n    if body?\n      ASTE! write := yield context.block $name, first!(write, (write := '')), #(write)*\n        $body\n        write\n    else\n      ASTE! write := yield context.block $name, first!(write, (write := ''))\n\nmacro partial(name, locals)\n  let new-context = if locals and not locals.is-const()\n    ASTE {} <<< context <<< $locals\n  else\n    ASTE context\n  \n  ASTE! write := yield context.partial $name, first!(write, (write := '')), $new-context\n");
   };
 
   if (typeof define === "function" && define.amd) {

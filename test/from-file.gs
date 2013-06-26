@@ -50,6 +50,11 @@ describe "from a file", #
               cb()
   
       describe "partials", #
+        it "can render a partial with a static name", #
+          let template = egs.from-file "$__dirname/fixtures/use-static-partial.egs"
+          expect(template partial-locals: { text: "Hello" })
+            .to.eventually.equal '["Hello"]'
+        
         it "can render a partial with a dynamic name and locals", #
           let template = egs.from-file "$__dirname/fixtures/use-partial.egs", { cache }
           expect(template partial-name: "quote-text", partial-locals: { text: "Hello" })

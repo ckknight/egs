@@ -64,6 +64,7 @@
                   promise = _ref.promise;
                   fulfill = _ref.fulfill;
                   reject = _ref.reject;
+                  _ref = null;
                   function step() {
                     var f, result;
                     try {
@@ -102,19 +103,19 @@
                   this.then(
                     function (ret) {
                       state = 1;
-                      return result = ret;
+                      result = ret;
                     },
                     function (err) {
                       state = 2;
-                      return result = err;
+                      result = err;
                     },
                     true
                   );
                   switch (state) {
-                  case 0: throw Error("Promise did not execute synchronously");
+                  case 0: throw new Error("Promise did not execute synchronously");
                   case 1: return result;
                   case 2: throw result;
-                  default: throw Error("Unknown state");
+                  default: throw new Error("Unknown state");
                   }
                 }
               },
@@ -142,11 +143,14 @@
         }());
         __fromPromise = function (promise) {
           if (typeof promise !== "object" || promise === null) {
-            throw TypeError("Expected promise to be an Object, got " + __typeof(promise));
+            throw new TypeError("Expected promise to be an Object, got " + __typeof(promise));
           } else if (typeof promise.then !== "function") {
-            throw TypeError("Expected promise.then to be a Function, got " + __typeof(promise.then));
+            throw new TypeError("Expected promise.then to be a Function, got " + __typeof(promise.then));
           }
           return function (callback) {
+            if (typeof callback !== "function") {
+              throw new TypeError("Expected callback to be a Function, got " + __typeof(callback));
+            }
             promise.then(
               function (value) {
                 return setImmediate(callback, null, value);
@@ -159,19 +163,19 @@
         };
         __generatorToPromise = function (generator, allowSync) {
           if (typeof generator !== "object" || generator === null) {
-            throw TypeError("Expected generator to be an Object, got " + __typeof(generator));
+            throw new TypeError("Expected generator to be an Object, got " + __typeof(generator));
           } else {
             if (typeof generator.send !== "function") {
-              throw TypeError("Expected generator.send to be a Function, got " + __typeof(generator.send));
+              throw new TypeError("Expected generator.send to be a Function, got " + __typeof(generator.send));
             }
             if (typeof generator["throw"] !== "function") {
-              throw TypeError("Expected generator.throw to be a Function, got " + __typeof(generator["throw"]));
+              throw new TypeError("Expected generator.throw to be a Function, got " + __typeof(generator["throw"]));
             }
           }
           if (allowSync == null) {
             allowSync = false;
           } else if (typeof allowSync !== "boolean") {
-            throw TypeError("Expected allowSync to be a Boolean, got " + __typeof(allowSync));
+            throw new TypeError("Expected allowSync to be a Boolean, got " + __typeof(allowSync));
           }
           function continuer(verb, arg) {
             var item;
@@ -204,20 +208,18 @@
           return dest;
         };
         __isArray = typeof Array.isArray === "function" ? Array.isArray
-          : (function () {
-            var _toString;
-            _toString = Object.prototype.toString;
+          : (function (_toString) {
             return function (x) {
               return _toString.call(x) === "[object Array]";
             };
-          }());
+          }(Object.prototype.toString));
         __owns = Object.prototype.hasOwnProperty;
         __promise = function (value, allowSync) {
           var factory;
           if (allowSync == null) {
             allowSync = false;
           } else if (typeof allowSync !== "boolean") {
-            throw TypeError("Expected allowSync to be a Boolean, got " + __typeof(allowSync));
+            throw new TypeError("Expected allowSync to be a Boolean, got " + __typeof(allowSync));
           }
           if (typeof value === "function") {
             factory = function () {
@@ -243,7 +245,7 @@
         __slice = Array.prototype.slice;
         __toArray = function (x) {
           if (x == null) {
-            throw TypeError("Expected an object, got " + __typeof(x));
+            throw new TypeError("Expected an object, got " + __typeof(x));
           } else if (__isArray(x)) {
             return x;
           } else if (typeof x === "string") {
@@ -251,7 +253,7 @@
           } else if (typeof x.length === "number") {
             return __slice.call(x);
           } else {
-            throw TypeError("Expected an object with a length property, got " + __typeof(x));
+            throw new TypeError("Expected an object with a length property, got " + __typeof(x));
           }
         };
         __typeof = (function () {
@@ -269,13 +271,11 @@
         }());
         setImmediate = typeof GLOBAL.setImmediate === "function" ? GLOBAL.setImmediate
           : typeof process !== "undefined" && typeof process.nextTick === "function"
-          ? (function () {
-            var nextTick;
-            nextTick = process.nextTick;
+          ? (function (nextTick) {
             return function (func) {
               var args;
               if (typeof func !== "function") {
-                throw TypeError("Expected func to be a Function, got " + __typeof(func));
+                throw new TypeError("Expected func to be a Function, got " + __typeof(func));
               }
               args = __slice.call(arguments, 1);
               if (args.length) {
@@ -286,17 +286,17 @@
                 return nextTick(func);
               }
             };
-          }())
+          }(process.nextTick))
           : function (func) {
             var args;
             if (typeof func !== "function") {
-              throw TypeError("Expected func to be a Function, got " + __typeof(func));
+              throw new TypeError("Expected func to be a Function, got " + __typeof(func));
             }
             args = __slice.call(arguments, 1);
             if (args.length) {
               return setTimeout(
                 function () {
-                  func.apply(void 0, __toArray(args));
+                  func.apply(void 0, args);
                 },
                 0
               );
@@ -347,21 +347,9 @@
           var cache;
           cache = {};
           return function (name, fromFilepath) {
-            var filename, inner;
-            if (__owns.call(cache, fromFilepath)) {
-              inner = cache[fromFilepath];
-            } else {
-              inner = cache[fromFilepath] = {};
-            }
-            if (!__owns.call(inner, name)) {
-              filename = name;
-              if (!path.extname(filename)) {
-                filename += "" + fullExtname(fromFilepath);
-              }
-              return inner[name] = path.resolve(path.dirname(fromFilepath), filename);
-            } else {
-              return inner[name];
-            }
+            var filename, key;
+            key = name + "\u0000" + fromFilepath;
+            return cache[key] || (filename = name, !path.extname(filename) && (filename += "" + fullExtname(fromFilepath)), cache[key] = path.resolve(path.dirname(fromFilepath), filename));
           };
         }());
         function returnSame(value) {
@@ -429,6 +417,7 @@
                 _ref = _received;
                 filepath = _ref.filepath;
                 func = _ref.compiled.func;
+                _ref = null;
                 _o = __create(_this);
                 _o.__currentFilepath$ = filepath;
                 _o.__inPartial$ = true;
@@ -452,7 +441,7 @@
                 };
               case 5:
                 return { done: true, value: void 0 };
-              default: throw Error("Unknown state: " + _state);
+              default: throw new Error("Unknown state: " + _state);
               }
             }
           }
@@ -532,7 +521,7 @@
                 return { done: true, value: result };
               case 6:
                 return { done: true, value: void 0 };
-              default: throw Error("Unknown state: " + _state);
+              default: throw new Error("Unknown state: " + _state);
               }
             }
           }
@@ -580,6 +569,7 @@
                 _ref = _received;
                 filepath = _ref.filepath;
                 func = _ref.compiled.func;
+                _ref = null;
                 _o = __create(_this);
                 _o.__currentFilepath$ = filepath;
                 _o.__extendedBy$ = null;
@@ -618,7 +608,7 @@
                 return { done: true, value: text };
               case 9:
                 return { done: true, value: void 0 };
-              default: throw Error("Unknown state: " + _state);
+              default: throw new Error("Unknown state: " + _state);
               }
             }
           }
@@ -671,7 +661,7 @@
             } else if (value && typeof value.toHTML === "function") {
               return String(value.toHTML());
             } else {
-              throw TypeError("Expected a String, Number, or Object with a toHTML method, got " + __typeof(value));
+              throw new TypeError("Expected a String, Number, or Object with a toHTML method, got " + __typeof(value));
             }
           };
         }());
@@ -773,7 +763,7 @@
                   return { done: true, value: result };
                 case 10:
                   return { done: true, value: void 0 };
-                default: throw Error("Unknown state: " + _state);
+                default: throw new Error("Unknown state: " + _state);
                 }
               }
             }
@@ -831,6 +821,7 @@
             streamEnd = _ref.end;
             streamThrow = _ref["throw"];
             streamPublic = _ref["public"];
+            _ref = null;
             promise = __generatorToPromise((function () {
               var _e, _send, _state, _step, _throw, extension, func, helpers, result,
                   tmp;
@@ -892,7 +883,7 @@
                     return { done: true, value: result };
                   case 11:
                     return { done: true, value: void 0 };
-                  default: throw Error("Unknown state: " + _state);
+                  default: throw new Error("Unknown state: " + _state);
                   }
                 }
               }
@@ -975,7 +966,7 @@
                   return { done: false, value: getCompilationP() };
                 case 6:
                   return { done: true, value: void 0 };
-                default: throw Error("Unknown state: " + _state);
+                default: throw new Error("Unknown state: " + _state);
                 }
               }
             }
@@ -1015,8 +1006,8 @@
             if (version && typeof version === "object" && version !== null) {
               return Package.call(_this, null, version);
             }
-            if (version && version !== "0.2.2") {
-              throw Error("EGS Packages must be compiled with the same version as the EGS runtime: '" + version + "' vs. '0.2.2'");
+            if (version && version !== "0.3.0") {
+              throw new Error("EGS Packages must be compiled with the same version as the EGS runtime: '" + version + "' vs. '0.3.0'");
             }
             _this.factories = {};
             _this.templates = {};
@@ -1048,14 +1039,18 @@
               });
             }
           }
-          _Package_prototype.set = function (filepath, generator, options) {
+          function set(isSimple, filepath, generator, options) {
             var factories, factory;
             if (options == null) {
               options = {};
             }
             filepath = withLeadingSlash(filepath);
             factories = this.factories;
-            factory = factories[filepath] = __promise(generator);
+            if (isSimple) {
+              factory = factories[filepath] = generator;
+            } else {
+              factory = factories[filepath] = __promise(generator);
+            }
             this.templates[filepath] = makeTemplate(
               returnSame(__defer.fulfilled({ func: factory, isSimple: false })),
               makeHelpersFactory(
@@ -1071,6 +1066,31 @@
                 }
               ),
               true
+            );
+          }
+          _Package_prototype.set = function (filepath, generator, options) {
+            if (options == null) {
+              options = {};
+            }
+            set.call(
+              this,
+              false,
+              filepath,
+              generator,
+              options
+            );
+            return this;
+          };
+          _Package_prototype.setSimple = function (filepath, generator, options) {
+            if (options == null) {
+              options = {};
+            }
+            set.call(
+              this,
+              true,
+              filepath,
+              generator,
+              options
             );
             return this;
           };
@@ -1106,7 +1126,7 @@
                   return { done: true, value: _received };
                 case 2:
                   return { done: true, value: void 0 };
-                default: throw Error("Unknown state: " + _state);
+                default: throw new Error("Unknown state: " + _state);
                 }
               }
             }
@@ -1201,7 +1221,7 @@
           };
         }
         module.exports = {
-          version: "0.2.2",
+          version: "0.3.0",
           Package: Package,
           EGSError: EGSError,
           makeTemplate: makeTemplate,
@@ -1235,13 +1255,11 @@
             return new F();
           };
         __isArray = typeof Array.isArray === "function" ? Array.isArray
-          : (function () {
-            var _toString;
-            _toString = Object.prototype.toString;
+          : (function (_toString) {
             return function (x) {
               return _toString.call(x) === "[object Array]";
             };
-          }());
+          }(Object.prototype.toString));
         __typeof = (function () {
           var _toString;
           _toString = Object.prototype.toString;
@@ -1296,10 +1314,10 @@
         }());
         exports.__maybeEscape = function (escape, arr) {
           if (typeof escape !== "function") {
-            throw TypeError("Expected escape to be a Function, got " + __typeof(escape));
+            throw new TypeError("Expected escape to be a Function, got " + __typeof(escape));
           }
           if (!__isArray(arr)) {
-            throw TypeError("Expected arr to be an Array, got " + __typeof(arr));
+            throw new TypeError("Expected arr to be an Array, got " + __typeof(arr));
           }
           if (arr[1]) {
             return escape(arr[0]);

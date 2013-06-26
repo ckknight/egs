@@ -1,7 +1,7 @@
 {
   "name": "egs",
   "description": "Embedded GorillaScript template generator",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "author": {
     "name": "Cameron Kenneth Knight",
     "email": "ckknight@gmail.com"
@@ -25,7 +25,7 @@
     "url": "git://github.com/ckknight/egs"
   },
   "dependencies": {
-    "gorillascript": "~0.8.25"
+    "gorillascript": "~0.9.0"
   },
   "devDependencies": {
     "mocha": "~1.9.0",

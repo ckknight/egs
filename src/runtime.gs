@@ -39,11 +39,11 @@ let full-extname(filename)
 let guess-filepath = do
   let cache = {}
   #(name, from-filepath)
-    let inner = cache[from-filepath] ownsor= {}
-    inner[name] ownsor=
+    let key = "$name\0$from-filepath"
+    cache[key] or=
       let mutable filename = name
       if not path.extname filename
-        filename &= full-extname(from-filepath)
+        filename ~&= full-extname(from-filepath)
       path.resolve path.dirname(from-filepath), filename
 
 let return-same(value) # value
@@ -327,16 +327,10 @@ class Package
     else
       fulfilled! { filepath, compiled: { func: factories[filepath], is-simple: false } }
   
-  /**
-   * Set a filepath in the package to have a certain generator which will
-   * become a promise, as well as any options.
-   *
-   * Returns `this`, for fluent APIs.
-   */
-  def set(mutable filepath as String, generator as ->, options = {})
+  let set(is-simple, mutable filepath as String, generator as ->, options = {})!
     filepath := with-leading-slash filepath
     let factories = @factories
-    let factory = factories[filepath] := promise! generator
+    let factory = factories[filepath] := if is-simple then generator else promise! generator
     @templates[filepath] := make-template(
       return-same fulfilled! { func: factory, is-simple: false }
       make-helpers-factory(
@@ -344,6 +338,25 @@ class Package
         #(name, current-filepath)
           find factories, name, current-filepath)
       true)
+    
+  /**
+   * Set a filepath in the package to have a certain generator which will
+   * become a promise, as well as any options.
+   *
+   * Returns `this`, for fluent APIs.
+   */
+  def set(mutable filepath as String, generator as ->, options = {})
+    set@ this, false, filepath, generator, options
+    this
+  
+  /**
+   * Set a filepath in the package to have a certain function which should
+   * return a string.
+   *
+   * Returns `this`, for fluent APIs.
+   */
+  def set-simple(mutable filepath as String, generator as ->, options = {})
+    set@ this, true, filepath, generator, options
     this
   
   /**

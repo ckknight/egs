@@ -7,7 +7,7 @@ macro extends(name, locals)
 
 macro block
   syntax ident as Identifier, body as GeneratorBody?
-    let name = @const @name(ident)
+    let name = @const ident.name
     if body?
       ASTE! write := yield context.block $name, first!(write, (write := '')), #(write)*
         $body
@@ -20,4 +20,5 @@ macro partial(name, locals)
     ASTE {} <<< context <<< $locals
   else
     ASTE context
+  
   ASTE! write := yield context.partial $name, first!(write, (write := '')), $new-context

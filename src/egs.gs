@@ -52,7 +52,7 @@ let [get-prelude-macros, with-egs-prelude] = do
       if not prelude-path
         egs-prelude-p
       else
-        prelude-path-cache[prelude-path] ownsor= promise!
+        prelude-path-cache[prelude-path] or= promise!
           let egs-prelude = yield egs-prelude-p
           let text = yield to-promise! fs.read-file prelude-path, "utf8"
           let result = yield gorillascript.parse text, { macros: egs-prelude }
@@ -359,7 +359,13 @@ let get-ast-pipe = do
               ]
           ]
           node.declarations
-      
+  
+  let remove-__generator-wrap(node, parent)
+    if is-call(node, \__generator)
+      let subnode = node.args[0]
+      if subnode instanceof ast.Func and subnode.params.length == 3 and subnode.params[0].name == \write and subnode.params[1].name == \context and subnode.params[2].name == \helpers
+        subnode
+  
   #(helper-names) #(root)
     root
       .walk convert-write-call-to-write
@@ -373,6 +379,7 @@ let get-ast-pipe = do
       .walk change-context-to-helpers(helper-names)
       .walk add-helpers-to-params
       .walk add-flush-to-generator-return
+      .walk remove-__generator-wrap
 
 /**
  * Compile a chunk of egs-code into a chunk of JavaScript code.
@@ -380,7 +387,7 @@ let get-ast-pipe = do
 let compile-code = promise! #(egs-code as String, compile-options as {}, helper-names as [])*
   let macros = yield get-prelude-macros(compile-options.prelude)
   let ast-pipe = get-ast-pipe(helper-names)
-  let options = {} <<< compile-options <<< {+embedded, +noindent, macros, prelude: null, ast-pipe }
+  let options = {} <<< compile-options <<< { +embedded, +noindent, macros, prelude: null, ast-pipe }
   let mutable code = void
   let mutable is-generator = false
   try
@@ -462,8 +469,8 @@ let return-same(value) # value
 let compile-file = do
   let cache = {}
   #(filepath as String, compile-options as {}, helper-names as []) as Function<Promise>
-    let inner-cache = cache[filepath] ownsor= {}
-    inner-cache[make-cache-key(compile-options) & "\0" & helper-names.join("\0")] ownsor= do
+    let inner-cache = cache[filepath] or= {}
+    inner-cache[make-cache-key(compile-options) & "\0" & helper-names.join("\0")] or= do
       let recompile-file = promise! #*
         let egs-code = yield to-promise! fs.read-file filepath, "utf8"
         yield compile egs-code, compile-options, helper-names
@@ -668,13 +675,35 @@ let compile-package = promise! #(input-dirpath as String, output-filepath as Str
     let files-assigned = {}
     let is-do-wrap(node)
       node instanceof ast.Call and (node.func instanceof ast.Func or (node.func instanceof ast.Binary and node.func.op == "." and node.func.left instanceof ast.Func and node.func.right.is-const() and node.func.right.const-value() in [\call, \apply]))
+    let unwrap-do-wrap(mutable node)
+      while is-do-wrap(node)
+        node := if node.func instanceof ast.Func
+          node.func.body
+        else
+          node.func.left.body
+      node
+    let last-node(node)
+      if node instanceofsome [ast.BlockStatement, ast.BlockExpression]
+        node.body[* - 1]
+      else
+        node
+    let is-returning-generator(mutable node)
+      node := last-node unwrap-do-wrap node
+      if node instanceof ast.Return and node.node instanceof ast.Func
+        let func-return = last-node unwrap-do-wrap node.node.body
+        if func-return instanceof ast.Return and func-return.node not instanceof ast.Obj
+          return false
+      true
     let assign-files(node)
       if node.pos.file and files-assigned not ownskey node.pos.file and is-do-wrap(node)
         files-assigned[node.pos.file] := true
         ast.Call node.pos,
           ast.Access node.pos,
             ast.Ident node.pos, \templates
-            ast.Const node.pos, \set
+            ast.Const node.pos, if is-returning-generator(node)
+              \set
+            else
+              \set-simple
           [
             ast.Const node.pos, path.relative(input-dirpath, node.pos.file)
             node
@@ -796,21 +825,25 @@ let compile-package = promise! #(input-dirpath as String, output-filepath as Str
     ast-pipe: full-ast-pipe
   }
 
+let wrap-Module_resolveFilename = memoize #
+  let Module = require 'module'
+  let old_resolveFilename = Module._resolveFilename
+  Module._resolveFilename := #(request, parent)
+    if request == \egs
+      path.resolve(__dirname, '../index.js')
+    else
+      old_resolveFilename@ this, ...arguments
+
 let package-from-directory = promise! #(input-dirpath as String, options = {})* as Promise<Package>
   let tmp-name = "egs-package-$(new Date().get-time())-$(Math.random().to-string(36).slice(2)).js"
   let tmp-path = path.join os.tmpdir(), tmp-name
   yield compile-package input-dirpath, tmp-path, options
   
-  let js-code = yield to-promise! fs.read-file tmp-path, 'utf8'
-  yield to-promise! fs.unlink tmp-path
-  
-  let sandbox = { EGSRuntime: egs-runtime }
-  Function(js-code).call(sandbox)
-  
-  let templates = sandbox.EGSTemplates
+  wrap-Module_resolveFilename()
+  let templates = require tmp-path
   if templates not instanceof Package
     throw Error "Package did not build successfully"
-  
+  yield to-promise! fs.unlink tmp-path
   templates
 
 module.exports := compile-template <<< {

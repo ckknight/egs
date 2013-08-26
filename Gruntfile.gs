@@ -123,14 +123,35 @@ module.exports := #(grunt)
   grunt.register-task "browser-runtime", "Build extras/egs-runtime.js", #
     let done = @async()
     let promise = promise!
-      let code = yield build-browser(
-        ["runtime", "helpers"]
-        "runtime"
-        "EGSRuntime"
-        "")
+      let filename-path = yield to-promise! fs.realpath __filename
+      let lib-path = path.join(path.dirname(filename-path), "lib")
+      let text = yield to-promise! fs.read-file path.join(lib-path, "runtime.js"), "utf8"
+
+      let code = """
+        ;(function (root) {
+          "use strict";
+          var _runtime = function () {
+            var exports = {}
+            var module = { exports: exports };
+
+            $(text.split("\n").join("\n    "))
+            
+            return module.exports;
+          };
       
+          if (typeof define === "function" && define.amd) {
+            define(_runtime);
+          } else if (typeof module !== "undefined" && typeof require === "function") {
+            module.exports = _runtime();
+          } else {
+            root.EGSRuntime = _runtime();
+          }
+        }(this));
+        """
+
       grunt.file.write "extras/egs-runtime.js", code
       grunt.log.writeln 'File "extras/egs-runtime.js" created.'
+
     promise.then(
       #-> done()
       #(e)

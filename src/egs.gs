@@ -671,6 +671,9 @@ let compile-package = promise! #(input-dirpath as String, output-filepath as Str
   let input-filepaths = yield find-all-extensioned-filepaths input-dirpath, ".egs"
   let macros = yield get-prelude-macros(options.prelude)
   let ast-pipe = get-ast-pipe(get-helper-names({}))
+  let {include-egs-runtime} = options
+  let runtime-code = if include-egs-runtime
+    yield to-promise! fs.read-file path.join(__dirname, '..', 'lib', 'runtime.js'), 'utf8'
   let full-ast-pipe(mutable root, , ast)
     let files-assigned = {}
     let is-do-wrap(node)
@@ -710,97 +713,181 @@ let compile-package = promise! #(input-dirpath as String, output-filepath as Str
           ]
 
     root := ast-pipe(root).walk assign-files
-    ast.Root root.pos,
-      ast.Call root.pos,
-        ast.Access root.pos,
-          ast.Func root.pos,
-            null
-            [ast.Ident root.pos, \factory]
-            []
-            ast.IfStatement root.pos,
-              ast.And root.pos,
-                ast.Binary root.pos,
-                  ast.Unary root.pos,
-                    \typeof
-                    ast.Ident root.pos, \module
-                  "!=="
-                  ast.Const root.pos, \undefined
-                ast.Access root.pos,
-                  ast.Ident root.pos, \module
-                  ast.Const root.pos, \exports
-              ast.Assign root.pos,
-                ast.Access root.pos,
-                  ast.Ident root.pos, \module
-                  ast.Const root.pos, \exports
-                ast.Call root.pos,
-                  ast.Ident root.pos, \factory
-                  [
-                    ast.Call root.pos,
-                      ast.Ident root.pos, \require
-                      [ast.Const root.pos, \egs]
-                  ]
+    if include-egs-runtime
+      ast.Root root.pos,
+        ast.Call root.pos,
+          ast.Access root.pos,
+            ast.Func root.pos,
+              null
+              [ast.Ident root.pos, \factory]
+              []
               ast.IfStatement root.pos,
                 ast.And root.pos,
                   ast.Binary root.pos,
                     ast.Unary root.pos,
                       \typeof
-                      ast.Ident root.pos, \define
-                    "==="
-                    ast.Const root.pos, \function
+                      ast.Ident root.pos, \module
+                    "!=="
+                    ast.Const root.pos, \undefined
                   ast.Access root.pos,
-                    ast.Ident root.pos, \define
-                    ast.Const root.pos, \amd
-                ast.Call root.pos,
-                  ast.Ident root.pos, \define
-                  [
-                    ast.Arr root.pos, [ast.Const root.pos, "egs-runtime"]
-                    ast.Ident root.pos, \factory
-                  ]
+                    ast.Ident root.pos, \module
+                    ast.Const root.pos, \exports
                 ast.Assign root.pos,
                   ast.Access root.pos,
-                    ast.This root.pos,
-                    ast.Const root.pos, options.global-export or \EGSTemplates
+                    ast.Ident root.pos, \module
+                    ast.Const root.pos, \exports
+                  ast.Call root.pos,
+                    ast.Ident root.pos, \factory
+                ast.IfStatement root.pos,
+                  ast.And root.pos,
+                    ast.Binary root.pos,
+                      ast.Unary root.pos,
+                        \typeof
+                        ast.Ident root.pos, \define
+                      "==="
+                      ast.Const root.pos, \function
+                    ast.Access root.pos,
+                      ast.Ident root.pos, \define
+                      ast.Const root.pos, \amd
+                  ast.Call root.pos,
+                    ast.Ident root.pos, \define
+                    [
+                      ast.Ident root.pos, \factory
+                    ]
+                  ast.Assign root.pos,
+                    ast.Access root.pos,
+                      ast.This root.pos,
+                      ast.Const root.pos, options.global-export or \EGSTemplates
+                    ast.Call root.pos,
+                      ast.Ident root.pos, \factory
+            ast.Const root.pos, \call
+          [
+            ast.This root.pos
+            ast.Func root.pos,
+              null
+              []
+              [\templates, \EGSRuntime]
+              ast.Block root.pos, [
+                ast.Assign root.pos,
+                  ast.Ident root.pos, \EGSRuntime,
+                  ast.Eval root.pos, """
+                    (function () {
+                      var exports = {};
+                      var module = { exports: exports };
+
+                      $(runtime-code.split('\n').join('\n  '))
+
+                      return module.exports;
+                    }.call(this))
+                    """.split('\n').join('\n  ')
+                ast.Assign root.pos,
+                  ast.Ident root.pos, \templates
+                  ast.Call root.pos,
+                    ast.Access root.pos,
+                      ast.Ident root.pos, \EGSRuntime
+                      ast.Const root.pos, \Package
+                    [
+                      ast.Const root.pos, __VERSION__
+                    ]
+                root.body
+                ast.Return root.pos,
+                  ast.Ident root.pos, \templates
+              ]
+          ]
+        []
+        []
+    else
+      ast.Root root.pos,
+        ast.Call root.pos,
+          ast.Access root.pos,
+            ast.Func root.pos,
+              null
+              [ast.Ident root.pos, \factory]
+              []
+              ast.IfStatement root.pos,
+                ast.And root.pos,
+                  ast.Binary root.pos,
+                    ast.Unary root.pos,
+                      \typeof
+                      ast.Ident root.pos, \module
+                    "!=="
+                    ast.Const root.pos, \undefined
+                  ast.Access root.pos,
+                    ast.Ident root.pos, \module
+                    ast.Const root.pos, \exports
+                ast.Assign root.pos,
+                  ast.Access root.pos,
+                    ast.Ident root.pos, \module
+                    ast.Const root.pos, \exports
                   ast.Call root.pos,
                     ast.Ident root.pos, \factory
                     [
-                      ast.Access root.pos,
-                        ast.This root.pos,
-                        ast.Const root.pos, \EGSRuntime
+                      ast.Call root.pos,
+                        ast.Ident root.pos, \require
+                        [ast.Const root.pos, \egs]
                     ]
-          ast.Const root.pos, \call
-        [
-          ast.This root.pos
-          ast.Func root.pos,
-            null
-            [
-              ast.Ident root.pos, \EGSRuntime
-            ]
-            [\templates]
-            ast.Block root.pos, [
-              ast.IfStatement root.pos,
-                ast.Unary root.pos,
-                  "!"
-                  ast.Ident root.pos, \EGSRuntime
-                ast.Throw root.pos,
+                ast.IfStatement root.pos,
+                  ast.And root.pos,
+                    ast.Binary root.pos,
+                      ast.Unary root.pos,
+                        \typeof
+                        ast.Ident root.pos, \define
+                      "==="
+                      ast.Const root.pos, \function
+                    ast.Access root.pos,
+                      ast.Ident root.pos, \define
+                      ast.Const root.pos, \amd
                   ast.Call root.pos,
-                    ast.Ident root.pos, \Error
-                    [ast.Const root.pos, "Expected EGSRuntime to be available"]
-              ast.Assign root.pos,
-                ast.Ident root.pos, \templates
-                ast.Call root.pos,
-                  ast.Access root.pos,
+                    ast.Ident root.pos, \define
+                    [
+                      ast.Arr root.pos, [ast.Const root.pos, "egs-runtime"]
+                      ast.Ident root.pos, \factory
+                    ]
+                  ast.Assign root.pos,
+                    ast.Access root.pos,
+                      ast.This root.pos,
+                      ast.Const root.pos, options.global-export or \EGSTemplates
+                    ast.Call root.pos,
+                      ast.Ident root.pos, \factory
+                      [
+                        ast.Access root.pos,
+                          ast.This root.pos,
+                          ast.Const root.pos, \EGSRuntime
+                      ]
+            ast.Const root.pos, \call
+          [
+            ast.This root.pos
+            ast.Func root.pos,
+              null
+              [
+                ast.Ident root.pos, \EGSRuntime
+              ]
+              [\templates]
+              ast.Block root.pos, [
+                ast.IfStatement root.pos,
+                  ast.Unary root.pos,
+                    "!"
                     ast.Ident root.pos, \EGSRuntime
-                    ast.Const root.pos, \Package
-                  [
-                    ast.Const root.pos, __VERSION__
-                  ]
-              root.body
-              ast.Return root.pos,
-                ast.Ident root.pos, \templates
-            ]
-        ]
-      []
-      []
+                  ast.Throw root.pos,
+                    ast.Call root.pos,
+                      ast.Ident root.pos, \Error
+                      [ast.Const root.pos, "Expected EGSRuntime to be available"]
+                ast.Assign root.pos,
+                  ast.Ident root.pos, \templates
+                  ast.Call root.pos,
+                    ast.Access root.pos,
+                      ast.Ident root.pos, \EGSRuntime
+                      ast.Const root.pos, \Package
+                    [
+                      ast.Const root.pos, __VERSION__
+                    ]
+                root.body
+                ast.Return root.pos,
+                  ast.Ident root.pos, \templates
+              ]
+          ]
+        []
+        []
   yield gorillascript.compile-file {
     input: input-filepaths
     output: output-filepath

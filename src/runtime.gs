@@ -1,6 +1,50 @@
-require! fs
-require! path
-require! './helpers'
+let helpers = do
+  // everything exported here will be available by default in the context
+  let helpers = {}
+
+  class RawHTML
+    def constructor(text)
+      @text := text
+    def to-HTML() -> @text
+
+  /**
+   * Wrap the provided text so that it will be treated as safe and non-escaped.
+   */
+  helpers.h := helpers.html := #(text)
+    RawHTML String text
+
+  /**
+   * Wrap a string such that it could be put into a JavaScript string, e.g.
+   * <script>var x = "Hello, <%=j name %>!"</script>
+   */
+  helpers.j := helpers.javascript := do
+    let escapes = {
+      "\\": "\\\\"
+      "\r": "\\r"
+      "\u2028": "\\u2028"
+      "\u2029": "\\u2029"
+      "\n": "\\n"
+      "\f": "\\f"
+      "'": "\\'"
+      '"': '\\"'
+      "\t": "\\t"
+    }
+    let replacer(x) -> escapes[x]
+    let regex = r"""[\\\r\u2028\u2029\n\f'"\t]"""g
+    #(text)
+      RawHTML String(text).replace regex, replacer
+
+  /**
+   * Given the escape function and an array of [value, shouldEscape], return
+   * either the value or the escaped value.
+   */
+  helpers.__maybe-escape := #(escape as ->, arr as [])
+    if arr[1]
+      escape(arr[0])
+    else
+      arr[0]
+
+  helpers
 
 const PARTIAL_PREFIX = "_"
 
@@ -20,17 +64,58 @@ class EGSError extends Error
   def name = "EGSError"
 
 /**
+ * A fake implementation of path.basename so path doesn't need to be required
+ * in-browser
+ */
+let path-basename(filepath)
+  let match = r'.*?[/\\](.*)'.exec(filepath)
+  if match
+    match[1]
+  else
+    filepath
+
+let path-dirname(filepath)
+  let match = r'(.*)[/\\]'.exec(filepath)
+  if match
+    match[1]
+  else
+    '.'
+
+let path-join(head, tail)
+  if head == '.'
+    tail
+  else
+    "$head/$tail"
+
+/**
  * Unlike path.extname, this returns the extension from the first dot onward.
  * If the filename starts with '.', an empty string is returned.
  *
  * For example, "hello.html.egs" will return ".html.egs" rather than ".egs"
  */
 let full-extname(filename)
-  let match = r'^[^\.]+(\..*)$'.exec(path.basename(filename))
+  let match = r'^[^\.]+(\..*)$'.exec(path-basename(filename))
   if match
     match[1]
   else
     ""
+
+/**
+ * Whether the filepath has an extension or not
+ */
+let has-extension(filepath)
+  r'.\.'.test(path-basename(filepath))
+
+/**
+ * Very simplistic version of path.resolve
+ */
+let path-resolve(mutable from-path, mutable to-path)
+  if r'^[/\\]'.test to-path
+    to-path
+  else if r'^..[/\\]'.test to-path
+    path-resolve path-dirname(from-path), to-path.substring(3)
+  else
+    path-join from-path, to-path
 
 /**
  * Guess the filepath that is being requested relative to the file it was
@@ -42,9 +127,9 @@ let guess-filepath = do
     let key = "$name\0$from-filepath"
     cache[key] or=
       let mutable filename = name
-      if not path.extname filename
+      if not has-extension filename
         filename ~&= full-extname(from-filepath)
-      path.resolve path.dirname(from-filepath), filename
+      path-resolve path-dirname(from-filepath), filename
 
 let return-same(value) # value
 
@@ -76,7 +161,7 @@ let helpers-proto = {} <<< helpers <<< {
   partial: to-maybe-sync promise! #(mutable name as String, mutable write as String, locals = {})*
     if not @__current-filepath$
       throw EGSError "Can only use partial if the 'filename' option is specified"
-    name := path.join(path.dirname(name), @__partial-prefix$ ~& path.basename(name))
+    name := path-join(path-dirname(name), @__partial-prefix$ ~& path-basename(name))
     write := flush-stream @__stream-send$, write
     let {filepath, compiled: {func}} = yield @__fetch-compiled$ name
     let partial-helpers = {extends this

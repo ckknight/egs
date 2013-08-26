@@ -13,6 +13,7 @@ let optimist = require 'optimist'
     u: { alias: "uglify", +boolean, desc: "Uglify compiled code with UglifyJS2" }
     m: { alias: "map", +string, desc: "Build a SourceMap" }
     e: { alias: "export", +string, desc: "The global exported to the browser when compiling a package, defaults to 'EGSTemplates'" }
+    "include-runtime": { +boolean, desc: "When compiling, include runtime in output (no-dependency mode)" }
     "source-root": { +string, desc: "Specify a sourceRoot in a SourceMap, defaults to ''" }
     options: { +string, desc: "a JSON object of options to pass into the compiler" }
     context: { +string, desc: "a JSON object to pass as the context to an executed template" }
@@ -48,6 +49,7 @@ optimist.check #(argv)
   exclusive \context, \package
   depend \output, \_
   depend \package, \_
+  depend "include-runtime", \package
   depend \map, \output, \package
   depend "source-root", \map
   depend \uglify, \package
@@ -160,6 +162,7 @@ let main = promise!
         file: argv.map
         source-root: argv["source-root"] or ""
       }
+    options.include-egs-runtime := not not argv["include-runtime"]
     yield egs.compile-package source-directory, output, options
     if argv.output
       process.stdout.write " $(((Date.now() - start-time) / 1000_ms).to-fixed(3)) s\n"
